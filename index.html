@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Runout — read the spot, not just the cards</title>
+    <meta
+      name="description"
+      content="A No-Limit Hold'em runout planner that starts where a real hand starts: the setting, the stacks and the players you are actually up against."
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <link rel="icon" href="assets/favicon.svg" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="masthead-inner">
+        <div class="wordmark">
+          <span class="pip">♠</span>
+          <div>
+            <h1>Runout</h1>
+            <p>Read the spot, not just the cards.</p>
+          </div>
+        </div>
+        <nav>
+          <button type="button" class="ghost" data-action="load-example">Load an example</button>
+          <button type="button" class="ghost" data-action="share">Copy link</button>
+          <a class="ghost" href="https://github.com/spb9876-cmd/pokerrunout">Source</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro">
+        <p>
+          Every runout starts with the setting. Who is at the table, what they think of you, how deep everyone is —
+          that changes the answer long before the flop does. Build the spot below and Runout will read it: real equity
+          against the ranges those specific players actually turn up with, the pot odds, and the exploit that comes
+          from who they are rather than from a chart. No-Limit Texas Hold'em.
+        </p>
+      </section>
+
+      <div class="layout">
+        <div class="builder">
+          <section class="panel" id="panel-setting">
+            <header class="panel-head">
+              <h2><span class="step">1</span> The setting</h2>
+              <p class="hint" id="setting-tagline"></p>
+            </header>
+            <div class="grid" id="setting-fields"></div>
+            <div class="setting-notes" id="setting-notes"></div>
+          </section>
+
+          <section class="panel" id="panel-hero">
+            <header class="panel-head">
+              <h2><span class="step">2</span> You</h2>
+              <p class="hint">Your seat, your stack, your two cards.</p>
+            </header>
+            <div class="grid" id="hero-fields"></div>
+          </section>
+
+          <section class="panel" id="panel-villains">
+            <header class="panel-head">
+              <h2><span class="step">3</span> Who else is in the pot</h2>
+              <p class="hint">The part that actually decides the hand. Give every live seat a read.</p>
+            </header>
+            <div id="villain-list"></div>
+            <button type="button" class="add" data-action="add-villain">+ Add an opponent</button>
+          </section>
+
+          <section class="panel" id="panel-board">
+            <header class="panel-head">
+              <h2><span class="step">4</span> The board and the money</h2>
+              <p class="hint">Leave the board empty for a preflop spot.</p>
+            </header>
+            <div class="board-slots" id="board-slots"></div>
+            <div class="grid" id="money-fields"></div>
+          </section>
+
+          <div class="actions">
+            <button type="button" class="primary" data-action="analyse">Read the spot</button>
+            <button type="button" class="ghost" data-action="reset">Start over</button>
+          </div>
+        </div>
+
+        <div class="results" id="results">
+          <section class="panel placeholder">
+            <h2>Nothing read yet</h2>
+            <p>
+              Set the scene on the left and press <strong>Read the spot</strong>. You will get your equity against the
+              ranges those players actually have here, the price you are being offered, and what to do about it.
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <p>
+        Runout models tendencies, not certainties. The numbers come from simulation against ranges built from the reads
+        you enter — change the read and the answer changes, which is the whole point. Study tool: not for use at a live
+        table where that is against the rules.
+      </p>
+    </footer>
+
+    <dialog id="card-picker">
+      <form method="dialog">
+        <header>
+          <h3 id="picker-title">Pick a card</h3>
+          <button type="submit" class="ghost" value="cancel">Close</button>
+        </header>
+      </form>
+      <div class="card-grid" id="card-grid"></div>
+      <footer>
+        <button type="button" class="ghost" data-action="clear-slot">Clear this slot</button>
+      </footer>
+    </dialog>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

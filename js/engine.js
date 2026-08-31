@@ -128,17 +128,27 @@ export function continuingRange(weights, board, villain, setting, opts = {}) {
     }
     case 'bet':
     case 'raised': {
+      // Betting ranges narrow as the hand goes on: everyone fires the flop wide
+      // and the river only with something they mean.
+      const streetTighten = street === 'river' ? 0.5 : street === 'turn' ? 0.72 : 1;
       const aggression = villain.action === 'raised' ? arch.raiseBluff : arch.bluffShare;
-      const width = villain.action === 'raised' ? clamp(arch.cbet * 0.45, 0.08, 0.5) : arch.cbet;
+      const width = clamp((villain.action === 'raised' ? arch.cbet * 0.45 : arch.cbet) * streetTighten, 0.05, 0.9);
       keepTop = width * (1 - aggression);
       keepBottom = width * aggression;
-      label = `a betting range that is about ${Math.round((1 - aggression) * 100)}% value and ${Math.round(aggression * 100)}% bluff`;
+      label = `a ${street} betting range that is about ${Math.round((1 - aggression) * 100)}% value and ${Math.round(aggression * 100)}% bluff`;
       break;
     }
     case 'checked': {
-      // Checking caps them: the hands they would have bet are less likely here.
-      topDiscount = 1 - arch.cbet * 0.75;
-      label = 'a checked range, capped by the hands they would have bet';
+      // A check only caps a range when that player was the one expected to bet.
+      // The blind checking to the preflop raiser is checking their whole range
+      // and telling you nothing.
+      const hasInitiative = villain.role === 'raised' || villain.role === '3bet';
+      if (hasInitiative) {
+        topDiscount = 1 - arch.cbet * 0.75;
+        label = 'a checked range, capped by the hands they would have bet with the lead';
+      } else {
+        label = 'their whole range — checking to the raiser tells you nothing';
+      }
       break;
     }
     default:
@@ -148,13 +158,14 @@ export function continuingRange(weights, board, villain, setting, opts = {}) {
   const out = [];
   const topBudget = keepTop * total;
   const bottomBudget = keepBottom * total;
+  const wouldHaveBet = arch.cbet * total; // the slice a check makes less likely
   let used = 0;
   let valueWeight = 0;
   for (const e of entries) {
     if (used >= topBudget) break;
     const take = Math.min(e.weight, topBudget - used);
+    const w = take * (used < wouldHaveBet ? topDiscount : 1);
     used += take;
-    const w = take * (out.length < Math.max(1, entries.length * 0.15) ? topDiscount : 1);
     if (w > 0) out.push({ combo: e.combo, weight: w, code: e.code });
     valueWeight += w;
   }
@@ -283,9 +294,12 @@ export function analyse(spot, options = {}) {
   const exploits = [];
 
   const bb = spot.bigBlind || 1;
-  const money = (n) => `${spot.currency ?? '$'}${Math.round(n * 100) / 100}`;
   const inBB = (n) => `${Math.round((n / bb) * 10) / 10}bb`;
-  const amount = (n) => (setting.format === 'tournament' ? inBB(n) : `${money(n)} (${inBB(n)})`);
+  const money = (n) =>
+    setting.format === 'tournament'
+      ? `${Math.round(n).toLocaleString()} chips`
+      : `${spot.currency ?? '$'}${Math.round(n * 100) / 100}`;
+  const amount = (n) => (setting.format === 'tournament' ? `${inBB(n)} (${Math.round(n).toLocaleString()} chips)` : `${money(n)} (${inBB(n)})`);
 
   // How often the field folds to a bet of a given size, from the same model
   // that built their ranges.
@@ -323,7 +337,11 @@ export function analyse(spot, options = {}) {
       reasons.push(`Calling is short of the price, but a raise to ${amount(raiseSize)} only needs to work ${(raiseBreakEven * 100).toFixed(0)}% of the time and this field folds about ${(fe * 100).toFixed(0)}% of the time to it — plus you still have ${(equity * 100).toFixed(1)}% when called.`);
     } else {
       decision = { action: 'fold', size: 0, headline: 'Fold' };
-      reasons.push(`You need ${(math.requiredEquity * 100).toFixed(1)}% to continue and you have ${(equity * 100).toFixed(1)}%. Calling loses ${money(-math.evCall)} on average.`);
+      const evText =
+        math.evCall > 0
+          ? `The call is worth ${money(math.evCall)} in raw chips, but chips are not what you are playing for here — see below.`
+          : `Calling loses ${money(-math.evCall)} on average.`;
+      reasons.push(`You need ${(math.requiredEquity * 100).toFixed(1)}% to continue and you have ${(equity * 100).toFixed(1)}%. ${evText}`);
     }
 
     if (math.riskPremium > 0.005) {

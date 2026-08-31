@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCards } from '../js/cards.js';
+import * as engine from '../js/engine.js';
 import { analyse, preflopRange, callMath, bluffMath, foldFrequency, bandCodes } from '../js/engine.js';
 import { archetypeById, settingById } from '../js/players.js';
 import { rangePercent } from '../js/ranges.js';
@@ -135,4 +136,19 @@ test('every opponent gets a read and the setting gets a say', () => {
 
 test('refuses a spot with nobody in it', () => {
   assert.throws(() => run({ villains: [] }), /opponent/i);
+});
+
+test('a check caps the preflop raiser but not the player checking to them', () => {
+  const board = parseCards('Ks 8d 3c');
+  const setting = settingById('casino_cash');
+  const { continuingRange, preflopRange } = engine;
+
+  const raiser = { position: 'co', type: 'tag', role: 'raised', action: 'checked' };
+  const defender = { position: 'bb', type: 'tag', role: 'blind', action: 'checked' };
+
+  const raiserRange = continuingRange(preflopRange(raiser, setting), board, raiser, setting);
+  const defenderRange = continuingRange(preflopRange(defender, setting), board, defender, setting);
+
+  assert.match(raiserRange.summary.label, /capped/);
+  assert.match(defenderRange.summary.label, /tells you nothing/);
 });
