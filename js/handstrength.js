@@ -158,3 +158,31 @@ export function readHand(hole, board) {
     score: evaluate([...hole, ...board], hole.length + board.length),
   };
 }
+
+/**
+ * Where a holding sits against random hands on this board: 1 is close to the
+ * nuts, 0 is pure air. Used by the table AI to decide how hard a player who can
+ * see their own cards actually likes their hand.
+ */
+export function percentileOnBoard(hole, board, rng = Math.random, samples = 160) {
+  const mine = strengthOnBoard(hole, board);
+  const used = new Uint8Array(52);
+  for (const c of hole) used[c] = 1;
+  for (const c of board) used[c] = 1;
+  const pool = [];
+  for (let c = 0; c < 52; c++) if (!used[c]) pool.push(c);
+
+  let beaten = 0;
+  const combo = [0, 0];
+  for (let i = 0; i < samples; i++) {
+    const a = (rng() * pool.length) | 0;
+    let b;
+    do {
+      b = (rng() * pool.length) | 0;
+    } while (b === a);
+    combo[0] = pool[a];
+    combo[1] = pool[b];
+    if (mine >= strengthOnBoard(combo, board)) beaten++;
+  }
+  return beaten / samples;
+}

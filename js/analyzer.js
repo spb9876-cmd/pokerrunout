@@ -1,4 +1,4 @@
-// Runout — the browser app. Builds a spot, hands it to the engine, renders the read.
+// The spot analyzer: build one exact spot by hand and get the full read on it.
 
 import { parseCards, cardName, rankOf, suitOf, RANKS, SUIT_SYMBOLS, deckWithout } from './cards.js';
 import { evaluate, describe } from './evaluator.js';
@@ -637,20 +637,24 @@ function onClick(event) {
   }
 }
 
-document.addEventListener('click', onClick);
-document.addEventListener('change', onFieldChange);
-document.addEventListener('input', (event) => {
-  if (event.target.matches('input[type="text"], input[type="number"]')) onFieldChange(event);
-});
+export function initAnalyzer(root) {
+  root.addEventListener('click', onClick);
+  root.addEventListener('change', onFieldChange);
+  root.addEventListener('input', (event) => {
+    if (event.target.matches('input[type="text"], input[type="number"]')) onFieldChange(event);
+  });
 
-$('#card-grid').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-card]');
-  if (!button || !pickerSlot) return;
-  const [where, index] = pickerSlot.split(':');
-  setSlot(pickerSlot, Number(button.dataset.card));
-  $('#card-picker').close();
-  // Filling the first hole card should lead straight on to the second.
-  if (where === 'hero' && Number(index) === 0 && state.hero.cards.length === 1) openPicker('hero:1');
-});
+  // The card picker dialog lives at body level, outside the analyzer root.
+  $('#card-picker').addEventListener('click', onClick);
+  $('#card-grid').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-card]');
+    if (!button || !pickerSlot) return;
+    const [where, index] = pickerSlot.split(':');
+    setSlot(pickerSlot, Number(button.dataset.card));
+    $('#card-picker').close();
+    // Filling the first hole card should lead straight on to the second.
+    if (where === 'hero' && Number(index) === 0 && state.hero.cards.length === 1) openPicker('hero:1');
+  });
 
-applySpot(load() ?? structuredClone(EXAMPLES[0].spot));
+  applySpot(load() ?? structuredClone(EXAMPLES[0].spot));
+}

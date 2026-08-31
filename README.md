@@ -17,6 +17,25 @@ runs the tests and publishes the site if they pass.
 
 ## What it does
 
+Two modes.
+
+### Play hands
+
+Set the table once — where the game is, the blinds, your stack, and one line about each opponent — then it
+deals hand after hand until you reset. Positions rotate. Opponents act on their own cards the way their
+player type would: the nit folds, the maniac raises, the station calls. Tells show up in the table talk
+(*"takes a long drink before pushing the chips in"*) — and whether they mean anything depends on who they
+came from: the straightforward friend's body tells the truth about 85% of the time, the tricky regular you
+know runs backwards more often than not.
+
+After every hand the coach goes back through each decision you made, re-reads the spot knowing only what you
+could have known, and grades it — right, close, or a leak, with the numbers ("14.3% equity needing 40.0% —
+about $1.28 lit on fire per time"). Then it opens everything: every hand at the table, and which of the
+tells were honest. The session keeps score: net result and decision quality, separately, because they are
+not the same thing.
+
+### Read a spot
+
 You build a spot — where you are playing, your seat and stack, your two cards, the board, the pot, and one
 line about each opponent (what kind of player they are, what they did) — and it gives you:
 
@@ -93,6 +112,9 @@ The math is checked rather than trusted:
 - the hand evaluator is verified against the exhaustive distribution of all 2,598,960 five-card hands
 - the Monte Carlo sampler is checked against exact board enumeration, and against published all-in equities
 - range notation, board reading, and the range-building rules each have their own tests
+- the dealer is swept over hundreds of scripted hands: chips are conserved at every step, side pots pay out
+  exactly what went in, folded players never win, positions rotate, and a maniac provably raises more than
+  a nit
 
 ## Layout
 
@@ -106,8 +128,13 @@ js/ranges.js          range notation
 js/handstrength.js    what a holding is on a board, draws included
 js/players.js         archetypes, settings, positions, tournament stages
 js/engine.js          range building, narrowing, and the decision
+js/game.js            the dealer: betting rounds, side pots, villain AI, rotation
+js/tells.js           the tell library and who can be believed
+js/coach.js           post-hand grading and tell decoding
+js/play.js            play mode UI
+js/analyzer.js        spot analyzer UI
 js/examples.js        worked spots
-js/app.js             the browser app
+js/main.js            entry point and mode switch
 js/data/preflop.js    generated hand rankings
 tools/gen-preflop.mjs the generator
 test/                 the suite
@@ -116,6 +143,7 @@ test/                 the suite
 ## Honest limits
 
 - Ranges are models of tendencies. They are a starting point for a read, not a read.
+- In play mode, stacks reset between hands and antes are not dealt; the session score is the memory.
 - Equity is simulated, so it carries a margin — shown next to every number.
 - The decision looks one street ahead, not to the end of the hand. It does not solve a game tree, and it
   does not balance your own range for you.

@@ -739,3 +739,389 @@ footer {
   box-shadow: var(--shadow);
   z-index: 50;
 }
+
+/* ---------- mode switch ---------- */
+
+.mode-switch {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.mode-switch button {
+  border: none;
+  border-radius: 0;
+  background: var(--felt-800);
+  color: var(--ink-dim);
+  padding: 8px 14px;
+}
+
+.mode-switch button.active {
+  background: linear-gradient(160deg, var(--brass), var(--brass-dim));
+  color: #0d221b;
+  font-weight: 650;
+}
+
+.analyzer-nav {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 18px;
+}
+
+#play-root {
+  padding-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.subhead {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brass);
+  margin: 18px 0 8px;
+}
+
+.seat-row {
+  margin-bottom: 4px;
+}
+
+.seat-remove button {
+  align-self: start;
+}
+
+/* ---------- session bar ---------- */
+
+.session-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  align-items: center;
+  padding: 12px 18px;
+  font-size: 14px;
+  color: var(--ink-dim);
+  margin-bottom: 16px;
+}
+
+.session-bar strong {
+  color: var(--ink);
+}
+
+.session-bar .up {
+  color: var(--good);
+}
+
+.session-bar .down {
+  color: var(--bad);
+}
+
+.session-bar button {
+  margin-left: auto;
+}
+
+/* ---------- the table ---------- */
+
+.seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.seat-card {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  background: rgba(15, 47, 38, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition: border-color 0.2s, opacity 0.2s;
+}
+
+.seat-card.hero {
+  border-color: var(--brass-dim);
+  background: rgba(244, 201, 93, 0.07);
+}
+
+.seat-card.out {
+  opacity: 0.45;
+}
+
+.seat-card.acting {
+  border-color: var(--good);
+  box-shadow: 0 0 0 1px var(--good);
+}
+
+.seat-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.seat-name {
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seat-card.hero .seat-name {
+  color: var(--brass);
+  font-weight: 650;
+}
+
+.dealer {
+  margin-left: auto;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--felt-900);
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.seat-cards {
+  display: flex;
+  gap: 3px;
+  min-height: 22px;
+}
+
+.seat-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.seat-stack {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.seat-bet {
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.seat-state {
+  margin-left: auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.seat-state.folded {
+  color: var(--ink-faint);
+}
+
+.seat-state.allin {
+  color: var(--bad);
+  font-weight: 650;
+}
+
+.mini.back {
+  background: linear-gradient(160deg, var(--felt-600), var(--felt-700));
+  color: var(--brass-dim);
+  border: 1px solid var(--line);
+}
+
+.mini.dim {
+  opacity: 0.5;
+}
+
+.board-area {
+  border-top: 1px dashed var(--line-soft);
+  padding-top: 14px;
+}
+
+.board-line {
+  display: flex;
+  gap: 7px;
+  min-height: 62px;
+  align-items: center;
+}
+
+.board-card {
+  width: 44px;
+  height: 60px;
+  border-radius: 7px;
+  background: linear-gradient(170deg, #fbfdfc, #e4ece8);
+  color: #10241d;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  font-weight: 650;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.3);
+}
+
+.board-card.red {
+  color: #c62b1f;
+}
+
+.board-card .rank {
+  font-size: 19px;
+  display: block;
+}
+
+.board-card .suit {
+  font-size: 15px;
+  display: block;
+}
+
+.pot-line {
+  margin-top: 9px;
+  color: var(--ink-dim);
+  font-size: 14px;
+}
+
+/* ---------- actions ---------- */
+
+.turn-line {
+  color: var(--ink-dim);
+  font-size: 13.5px;
+  margin-bottom: 10px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-buttons button {
+  padding: 11px 16px;
+  font-size: 15px;
+}
+
+.action-buttons small {
+  display: block;
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.65;
+}
+
+.act-fold:hover {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.act-raise {
+  border-color: var(--brass-dim);
+}
+
+/* ---------- the log ---------- */
+
+.hand-log {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+}
+
+.log-line {
+  color: var(--ink-dim);
+}
+
+.log-line.you-line {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.log-line.street-line {
+  color: var(--brass-dim);
+  text-transform: none;
+  margin-top: 4px;
+}
+
+.log-line.result-line {
+  color: var(--ink);
+  font-weight: 650;
+  border-top: 1px dashed var(--line-soft);
+  padding-top: 8px;
+}
+
+.tell-text {
+  color: var(--warn);
+}
+
+/* ---------- analysis ---------- */
+
+.analysis .outcome {
+  font-size: 16px;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.analysis .outcome.up {
+  color: var(--good);
+}
+
+.analysis .outcome.down {
+  color: var(--bad);
+}
+
+.decision {
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--ink-faint);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 9px;
+  font-size: 14px;
+}
+
+.decision.good {
+  border-left-color: var(--good);
+}
+
+.decision.ok {
+  border-left-color: var(--warn);
+}
+
+.decision.mistake {
+  border-left-color: var(--bad);
+}
+
+.decision-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.grade-mark {
+  font-weight: 700;
+}
+
+.decision.good .grade-mark {
+  color: var(--good);
+}
+
+.decision.ok .grade-mark {
+  color: var(--warn);
+}
+
+.decision.mistake .grade-mark {
+  color: var(--bad);
+}
+
+.tell-decode {
+  margin-bottom: 8px;
+  font-size: 13.5px;
+}
+
+@media (max-width: 980px) {
+  .session-bar button {
+    margin-left: 0;
+  }
+}
