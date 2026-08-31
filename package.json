@@ -1,0 +1,12 @@
+{
+  "name": "pokerrunout",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Runout planner: poker spots read through the setting, the stacks and the players you are actually up against.",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "gen": "node tools/gen-preflop.mjs",
+    "serve": "python3 -m http.server 8080"
+  }
+}
