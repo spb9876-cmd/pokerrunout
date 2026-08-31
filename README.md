@@ -21,12 +21,21 @@ Two modes.
 
 ### Play hands
 
-Set the table once — where the game is, the blinds, your stack, and one line about each opponent — then it
-deals hand after hand until you reset. Positions rotate. Opponents act on their own cards the way their
-player type would: the nit folds, the maniac raises, the station calls. Tells show up in the table talk
-(*"takes a long drink before pushing the chips in"*) — and whether they mean anything depends on who they
-came from: the straightforward friend's body tells the truth about 85% of the time, the tricky regular you
-know runs backwards more often than not.
+Set the table once — where the game is, the blinds, your buy-in, and one line about each opponent — then it
+deals hand after hand on a proper oval felt until you reset. Positions rotate, the button moves, and
+**stacks carry over from hand to hand**: bust and you buy back in, and the session tracks how deep in you
+are. Opponents act on their own cards the way their player type would: the nit folds, the maniac raises,
+the station calls — and the sticky ones top their stacks back up between hands while the nit happily plays
+short.
+
+Losing a big pot leaves a mark. A player who just got stacked can go **on tilt** — wider ranges, bigger
+bets, fewer folds — fading back to normal over the next few hands. Tilt is the one read the game gives you
+for free: the table talk says who is steaming, their seat shows it, and the post-hand analysis reminds you
+what their aggression was worth while it lasted.
+
+Tells show up in the table talk beside the felt (*"takes a long drink before pushing the chips in"*) — and
+whether they mean anything depends on who they came from: the straightforward friend's body tells the truth
+about 85% of the time, the tricky regular you know runs backwards more often than not.
 
 After every hand the coach goes back through each decision you made, re-reads the spot knowing only what you
 could have known, and grades it — right, close, or a leak, with the numbers ("14.3% equity needing 40.0% —
@@ -115,6 +124,8 @@ The math is checked rather than trusted:
 - the dealer is swept over hundreds of scripted hands: chips are conserved at every step, side pots pay out
   exactly what went in, folded players never win, positions rotate, and a maniac provably raises more than
   a nit
+- the ledger balances across rebuys (money on the table always equals money bought in), and a tilted table
+  provably enters more pots than a calm one
 
 ## Layout
 
@@ -143,7 +154,8 @@ test/                 the suite
 ## Honest limits
 
 - Ranges are models of tendencies. They are a starting point for a read, not a read.
-- In play mode, stacks reset between hands and antes are not dealt; the session score is the memory.
+- In play mode antes are not dealt, and rebuys are automatic and instant — the session ledger (stacks
+  against money bought in) is the memory.
 - Equity is simulated, so it carries a margin — shown next to every number.
 - The decision looks one street ahead, not to the end of the hand. It does not solve a game tree, and it
   does not balance your own range for you.

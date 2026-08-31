@@ -28,6 +28,12 @@ export function gradeHand(session, hand) {
   }
 
   const tells = decodeTells(hand);
+  const steam = hand.seats
+    .filter((s) => !s.isHero && (s.tilt ?? 0) >= 0.25)
+    .map(
+      (s) =>
+        `${positionById(s.position).name} (${archetypeById(s.type).name}) came into this hand steaming from a big loss — wider and angrier than their usual ranges, so give their aggression a little less credit and their calls a little more rope.`
+    );
   const results = hand.results;
   const money = (n) => `${cfg.currency}${Math.round(Math.abs(n) * 100) / 100}`;
 
@@ -49,6 +55,7 @@ export function gradeHand(session, hand) {
   return {
     decisions: graded,
     tells,
+    steam,
     summary: { outcome, process, heroNet: results.heroNet, heroCards: [...hero.cards] },
     reveal: results.reveal,
   };

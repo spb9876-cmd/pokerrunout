@@ -775,6 +775,7 @@ footer {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-x: clip; /* rim seats may poke past the edge on small screens; never let them scroll the page */
 }
 
 .subhead {
@@ -822,45 +823,305 @@ footer {
   margin-left: auto;
 }
 
-/* ---------- the table ---------- */
+/* ---------- the felt ---------- */
 
-.seats {
+.game-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+  gap: 18px;
+  align-items: start;
 }
 
-.seat-card {
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-  padding: 9px 10px;
-  background: rgba(15, 47, 38, 0.45);
+.table-column {
   display: flex;
   flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.table-stage {
+  position: relative;
+  aspect-ratio: 1.6;
+  min-height: 430px;
+  margin: 30px 0 34px;
+}
+
+.felt {
+  position: absolute;
+  inset: 8% 3%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 36%, #2b7955 0%, #1d5f43 42%, #124232 76%, #0d3126 100%);
+  border: 12px solid #081b15;
+  box-shadow:
+    inset 0 0 70px rgba(0, 0, 0, 0.45),
+    inset 0 2px 0 rgba(255, 255, 255, 0.06),
+    0 26px 60px rgba(0, 0, 0, 0.5);
+}
+
+.felt-ring {
+  position: absolute;
+  inset: 8% 10%;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.05);
+}
+
+#seats,
+#chips-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ---------- cards on the felt ---------- */
+
+.table-card {
+  width: 50px;
+  height: 70px;
+  border-radius: 8px;
+  background: linear-gradient(170deg, #fdfefe, #e7efeb);
+  color: #10241d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+  flex: none;
+}
+
+.table-card .rank {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.table-card .suit {
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+.table-card.red {
+  color: #c62b1f;
+}
+
+.table-card.back {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06), transparent),
+    repeating-linear-gradient(45deg, #185040 0 4px, #123c30 4px 8px);
+  border: 2px solid #0d2c23;
+}
+
+.table-card.ghost {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1.5px dashed rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+  color: rgba(233, 242, 237, 0.35);
+  position: relative;
+}
+
+.table-card.ghost .ghost-plus {
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.table-card.ghost::after {
+  content: attr(data-label);
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(233, 242, 237, 0.35);
+}
+
+.table-card.fresh {
+  animation: card-in 0.45s ease-out;
+}
+
+@keyframes card-in {
+  from {
+    transform: translateY(-16px) scale(0.7);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* ---------- board + pot ---------- */
+
+.board-center {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 2;
+}
+
+.board-title {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: rgba(233, 242, 237, 0.5);
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.street-chip {
+  background: rgba(7, 26, 21, 0.55);
+  border: 1px solid var(--line);
+  color: var(--brass);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.board-cards {
+  display: flex;
   gap: 7px;
-  transition: border-color 0.2s, opacity 0.2s;
 }
 
-.seat-card.hero {
+.pot-plate {
+  background: rgba(7, 26, 21, 0.6);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 4px 15px;
+  font-size: 13px;
+  color: var(--ink-dim);
+  margin-top: 6px;
+}
+
+.pot-plate strong {
+  color: var(--ink);
+}
+
+/* ---------- seats around the rim ---------- */
+
+.table-seat {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 4;
+  width: 150px;
+  pointer-events: none;
+}
+
+.table-seat .peek-cards {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  min-height: 40px;
+  margin-bottom: -12px; /* the backs tuck behind the plaque, like real cards on the rail */
+}
+
+.plaque {
+  position: relative;
+  z-index: 2;
+}
+
+.table-seat.hero .peek-cards {
+  margin-bottom: -14px;
+  z-index: 3; /* your own cards sit in front of the plaque */
+}
+
+.table-card.peek {
+  width: 30px;
+  height: 42px;
+  border-radius: 5px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+.table-card.peek .rank {
+  font-size: 13px;
+}
+
+.table-card.peek .suit {
+  font-size: 11px;
+}
+
+.hero-card {
+  width: 58px;
+  height: 80px;
+}
+
+.hero-card .rank {
+  font-size: 24px;
+}
+
+.hero-card .suit {
+  font-size: 18px;
+}
+
+.plaque {
+  background: rgba(6, 20, 16, 0.92);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 7px 11px;
+  width: 100%; /* never wider than the seat, so long names truncate instead of overflowing the page */
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.table-seat.hero .plaque {
   border-color: var(--brass-dim);
-  background: rgba(244, 201, 93, 0.07);
 }
 
-.seat-card.out {
+.table-seat.acting .plaque {
+  border-color: var(--good);
+  animation: seat-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes seat-pulse {
+  50% {
+    box-shadow: 0 0 0 5px rgba(110, 231, 168, 0.18), 0 8px 20px rgba(0, 0, 0, 0.45);
+  }
+}
+
+.table-seat.out {
   opacity: 0.45;
 }
 
-.seat-card.acting {
-  border-color: var(--good);
-  box-shadow: 0 0 0 1px var(--good);
+.table-seat.winner .plaque {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 1px var(--brass), 0 0 24px rgba(244, 201, 93, 0.35);
 }
 
-.seat-top {
+.plaque-row {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
+}
+
+.plaque-row.sub {
+  margin-top: 3px;
+}
+
+.pos-pip {
+  background: var(--felt-600);
+  color: var(--brass);
+  border-radius: 999px;
+  font-size: 10px;
+  padding: 1px 7px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex: none;
 }
 
 .seat-name {
@@ -868,48 +1129,23 @@ footer {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
-.seat-card.hero .seat-name {
+.table-seat.hero .seat-name {
   color: var(--brass);
   font-weight: 650;
 }
 
-.dealer {
+.steam {
   margin-left: auto;
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--felt-900);
-  font-size: 11px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
-.seat-cards {
-  display: flex;
-  gap: 3px;
-  min-height: 22px;
-}
-
-.seat-bottom {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
+  filter: drop-shadow(0 0 4px rgba(255, 138, 122, 0.6));
 }
 
 .seat-stack {
   font-variant-numeric: tabular-nums;
   font-weight: 650;
-}
-
-.seat-bet {
-  color: var(--warn);
-  font-variant-numeric: tabular-nums;
 }
 
 .seat-state {
@@ -928,59 +1164,123 @@ footer {
   font-weight: 650;
 }
 
-.mini.back {
-  background: linear-gradient(160deg, var(--felt-600), var(--felt-700));
-  color: var(--brass-dim);
-  border: 1px solid var(--line);
-}
-
 .mini.dim {
   opacity: 0.5;
 }
 
-.board-area {
-  border-top: 1px dashed var(--line-soft);
-  padding-top: 14px;
-}
+/* ---------- chips in the middle ---------- */
 
-.board-line {
-  display: flex;
-  gap: 7px;
-  min-height: 62px;
-  align-items: center;
-}
-
-.board-card {
-  width: 44px;
-  height: 60px;
-  border-radius: 7px;
-  background: linear-gradient(170deg, #fbfdfc, #e4ece8);
-  color: #10241d;
-  display: grid;
-  place-content: center;
-  text-align: center;
+.bet-bubble {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(6, 20, 16, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px 3px 6px;
+  font-size: 12px;
   font-weight: 650;
-  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  z-index: 3;
+  font-variant-numeric: tabular-nums;
+  transition: left 0.3s, top 0.3s;
 }
 
-.board-card.red {
-  color: #c62b1f;
+.chip {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f7dc8e, #c8a244);
+  border: 2px dashed rgba(13, 34, 27, 0.7);
+  box-sizing: border-box;
+  flex: none;
 }
 
-.board-card .rank {
-  font-size: 19px;
-  display: block;
+.dealer-button {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f2f5f3;
+  color: #0d221b;
+  font-weight: 800;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  z-index: 3;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  transition: left 0.4s, top 0.4s;
 }
 
-.board-card .suit {
-  font-size: 15px;
-  display: block;
+@media (max-width: 1020px) {
+  .game-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.pot-line {
-  margin-top: 9px;
-  color: var(--ink-dim);
-  font-size: 14px;
+@media (max-width: 700px) {
+  .table-stage {
+    min-height: 360px;
+    aspect-ratio: 1.15;
+    margin-top: 34px;
+  }
+  .table-card {
+    width: 32px;
+    height: 46px;
+    border-radius: 5px;
+  }
+  .table-card .rank {
+    font-size: 13px;
+  }
+  .table-card .suit {
+    font-size: 10px;
+  }
+  .board-cards {
+    gap: 4px;
+  }
+  .wordmark p {
+    display: none;
+  }
+  .masthead-inner {
+    padding-block: 10px;
+  }
+  .hero-card {
+    width: 46px;
+    height: 64px;
+  }
+  .hero-card .rank {
+    font-size: 18px;
+  }
+  .table-card.peek {
+    width: 24px;
+    height: 34px;
+  }
+  .table-card.peek .rank {
+    font-size: 11px;
+  }
+  .table-card.peek .suit {
+    font-size: 9px;
+  }
+  .table-seat {
+    width: 88px;
+  }
+  .plaque {
+    padding: 5px 8px;
+  }
+  .plaque-row {
+    font-size: 10.5px;
+    gap: 4px;
+  }
+  .pos-pip {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
+  .bet-bubble {
+    font-size: 10.5px;
+    padding: 2px 7px 2px 5px;
+  }
 }
 
 /* ---------- actions ---------- */

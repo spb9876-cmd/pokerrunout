@@ -32,9 +32,31 @@ export function createSession(config, seed = randomSeed()) {
     net: 0,
     handsPlayed: 0,
     grades: { good: 0, ok: 0, mistake: 0 },
+    // Stacks persist from hand to hand; busting means buying back in.
+    stacks: [config.heroStack, ...config.villains.map((v) => v.stack)],
+    invested: [config.heroStack, ...config.villains.map((v) => v.stack)],
+    rebuys: new Array(config.villains.length + 1).fill(0),
+    // Tilt: how much the last big loss is still steering each player, 0..1.
+    tilt: new Array(config.villains.length + 1).fill(0),
     hand: null,
   };
 }
+
+/** How hard each type goes on tilt after losing a big pot. */
+const TILT_PRONE = {
+  recreational: 0.9,
+  maniac: 0.85,
+  station: 0.6,
+  lag: 0.6,
+  abc: 0.5,
+  unknown: 0.5,
+  tricky: 0.45,
+  tag: 0.3,
+  nit: 0.25,
+};
+
+/** Types that top their stack back up between hands instead of playing short. */
+const TOPS_UP = new Set(['recreational', 'maniac', 'station']);
 
 /* -------------------------------------------------------------------- hands */
 
@@ -43,10 +65,13 @@ export function startHand(session) {
   session.handNumber += 1;
   const rng = mulberry32((session.seed + session.handNumber * 7919) >>> 0);
 
-  const players = [
-    { isHero: true, type: 'hero', stackSize: cfg.heroStack },
-    ...cfg.villains.map((v) => ({ isHero: false, type: v.type, stackSize: v.stack })),
-  ];
+  const buyins = [cfg.heroStack, ...cfg.villains.map((v) => v.stack)];
+  const players = buyins.map((buyin, i) => ({
+    isHero: i === 0,
+    type: i === 0 ? 'hero' : cfg.villains[i - 1].type,
+    stackSize: session.stacks[i],
+    buyin,
+  }));
   const n = players.length;
   const positions = seatsForTableSize(n);
 
@@ -68,6 +93,8 @@ export function startHand(session) {
       preflopRole: null,
       lastAction: null,
       lastStreetActed: null,
+      buyin: p.buyin,
+      tilt: p.isHero ? 0 : session.tilt[i],
     };
   });
   session.rotation = (session.rotation + 1) % n;
@@ -101,13 +128,41 @@ export function startHand(session) {
   };
   session.hand = hand;
 
+  log(hand, { kind: 'deal', text: `Hand #${hand.number}. Blinds ${cfg.smallBlind}/${cfg.bigBlind} posted.` });
+
+  // Rebuys and top-ups happen between hands, before the blinds go out.
+  const seatName = (seat) => (seat.isHero ? 'You' : `${positionById(seat.position).name} (${archetypeById(seat.type).name})`);
+  for (const seat of seats) {
+    const busted = seat.stack < cfg.bigBlind;
+    const wantsTopUp = !seat.isHero && TOPS_UP.has(seat.type) && seat.stack < seat.buyin * 0.5;
+    if (busted || wantsTopUp) {
+      const added = seat.buyin - seat.stack;
+      if (added > 0) {
+        seat.stack = seat.buyin;
+        session.invested[seat.id] += added;
+        if (busted) session.rebuys[seat.id] += 1;
+        session.stacks[seat.id] = seat.stack;
+        log(hand, {
+          kind: 'rebuy',
+          seat: seat.id,
+          text: busted
+            ? `${seatName(seat)} ${seat.isHero ? 'rebuy' : 'rebuys'} for ${cfg.currency}${seat.buyin}.`
+            : `${seatName(seat)} tops back up to ${cfg.currency}${seat.buyin}.`,
+        });
+      }
+    }
+    seat.startStack = seat.stack;
+    if (!seat.isHero && seat.tilt >= 0.25) {
+      log(hand, { kind: 'tilt', seat: seat.id, text: `${seatName(seat)} is still steaming from that last pot.` });
+    }
+  }
+
   const bySeat = (pos) => seats.find((s) => s.position === pos);
   const sb = bySeat('sb');
   const bb = bySeat('bb');
   putChips(hand, sb, Math.min(cfg.smallBlind, sb.stack));
   putChips(hand, bb, Math.min(cfg.bigBlind, bb.stack));
   hand.currentBet = cfg.bigBlind;
-  log(hand, { kind: 'deal', text: `Hand #${hand.number}. Blinds ${cfg.smallBlind}/${cfg.bigBlind} posted.` });
 
   openRound(hand, 'preflop', cfg.bigBlind);
   return hand;
@@ -326,33 +381,37 @@ function decideVillain(session, hand, seat) {
   const rng = hand.rng;
   const toCall = hand.currentBet - seat.streetPut;
   const pot = potTotal(hand);
+  const tilt = seat.tilt ?? 0;
 
-  if (hand.street === 'preflop') return decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot });
+  if (hand.street === 'preflop') return decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot, tilt });
 
   const s = percentileOnBoard(seat.cards, hand.board, rng);
   const draws = drawsFor(seat.cards, hand.board);
   const bigDraw = draws.flushDraw || draws.openEnded;
   const strongHint = s >= 0.72;
 
+  // Tilt makes everything angrier: more bets, bigger bets, fewer folds.
+  const size = () => betSize(arch, pot, rng) * (1 + tilt * 0.35);
+
   if (toCall <= 0) {
     // Can check or bet.
-    const valueLine = 0.78 - (arch.cbet - 0.5) * 0.35;
+    const valueLine = 0.78 - (arch.cbet - 0.5) * 0.35 - tilt * 0.1;
     if (s >= valueLine) {
-      const amount = snap(hand.currentBet + betSize(arch, pot, rng), cfg);
+      const amount = snap(hand.currentBet + size(), cfg);
       return { action: hand.currentBet > 0 ? 'raise' : 'bet', amount, strength: s, strongHint };
     }
-    if (bigDraw && rng() < arch.cbet * 0.55) {
-      return { action: 'bet', amount: snap(betSize(arch, pot, rng), cfg), strength: s, strongHint: true };
+    if (bigDraw && rng() < arch.cbet * 0.55 * (1 + tilt)) {
+      return { action: 'bet', amount: snap(size(), cfg), strength: s, strongHint: true };
     }
-    if (s <= 0.3 && rng() < arch.bluffShare * 0.4) {
-      return { action: 'bet', amount: snap(betSize(arch, pot, rng) * 0.85, cfg), strength: s, strongHint: false };
+    if (s <= 0.3 && rng() < arch.bluffShare * 0.4 * (1 + tilt * 1.5)) {
+      return { action: 'bet', amount: snap(size() * 0.85, cfg), strength: s, strongHint: false };
     }
     return { action: 'check', strength: s, strongHint };
   }
 
   // Facing a bet.
   const ratio = toCall / Math.max(pot - toCall, cfg.bigBlind);
-  const foldLine = foldFrequency(arch, setting, ratio, hand.street);
+  const foldLine = foldFrequency(arch, setting, ratio, hand.street) * (1 - tilt * 0.5);
   const forStack = toCall >= seat.stack;
 
   if (forStack) {
@@ -368,7 +427,7 @@ function decideVillain(session, hand, seat) {
     return { action: 'raise', amount, strength: s, strongHint: true };
   }
   if (s < foldLine && !bigDraw) {
-    if (rng() < arch.raiseBluff * 0.2 && hand.street !== 'river' && hand.raisesThisStreet < 2) {
+    if (rng() < arch.raiseBluff * 0.2 * (1 + tilt) && hand.street !== 'river' && hand.raisesThisStreet < 2) {
       const amount = snap(hand.currentBet + Math.max(hand.minRaise, pot * 0.6), cfg);
       return { action: 'raise', amount, strength: s, strongHint: false };
     }
@@ -381,11 +440,11 @@ function decideVillain(session, hand, seat) {
   return { action: 'call', strength: s, strongHint };
 }
 
-function decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot }) {
+function decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot, tilt = 0 }) {
   const cfg = session.config;
   const p = RANGE_CUTOFF[handCode(seat.cards[0], seat.cards[1])] ?? 1;
   const group = positionById(seat.position).group;
-  const widen = 1 + setting.loosen * 2;
+  const widen = (1 + setting.loosen * 2) * (1 + tilt * 0.5);
   const strongHint = p <= 0.1;
   const strength = 1 - p;
 
@@ -414,7 +473,7 @@ function decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot })
 
   // Facing a raise (or more).
   const reraises = hand.raisesThisStreet - 1;
-  const threeBetWidth = arch.threeBet * (reraises >= 2 ? 0.35 : 1);
+  const threeBetWidth = arch.threeBet * (reraises >= 2 ? 0.35 : 1) * (1 + tilt * 0.8);
   const callWidth = arch.callVsOpen * widen * (reraises >= 2 ? 0.4 : 1);
   const forBigChunk = toCall >= seat.stack * 0.55;
 
@@ -422,7 +481,7 @@ function decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot })
     const width = Math.max(threeBetWidth, 0.05) * (arch.calldown > 0.7 ? 2.2 : 1.2);
     return p <= width ? { action: 'call', strength, strongHint } : { action: 'fold', strength, strongHint: false };
   }
-  if (p <= threeBetWidth || (rng() < arch.raiseBluff * 0.12 && p > 0.2 && p < 0.45)) {
+  if (p <= threeBetWidth || (rng() < arch.raiseBluff * 0.12 * (1 + tilt * 2) && p > 0.2 && p < 0.45)) {
     const amount = snap(hand.currentBet * (2.6 + rng() * 0.8) + potDead(hand, seat), cfg);
     return { action: 'raise', amount, strength, strongHint: p <= threeBetWidth };
   }
@@ -537,16 +596,17 @@ const mapStreetAction = (a) => (a === 'bet' ? 'bet' : a === 'raise' ? 'raised' :
 
 function finishUncontested(session, hand, winner) {
   const total = potTotal(hand);
+  const won = new Map([[winner.id, total]]);
   const results = {
     kind: 'uncontested',
     pots: [{ amount: total, winners: [winner.id] }],
     winnersText: winner.isHero ? 'You take it down uncontested.' : `${positionById(winner.position).name} takes it uncontested.`,
     reveal: revealAll(hand),
-    heroNet: heroNet(hand, new Map([[winner.id, total]])),
+    heroNet: heroNet(hand, won),
     potTotal: total,
     board: [...hand.board],
   };
-  return conclude(session, hand, results);
+  return conclude(session, hand, results, won);
 }
 
 function finishShowdown(session, hand) {
@@ -602,7 +662,7 @@ function finishShowdown(session, hand) {
     potTotal: potTotal(hand),
     board: [...hand.board],
   };
-  return conclude(session, hand, results);
+  return conclude(session, hand, results, won);
 }
 
 function heroNet(hand, won) {
@@ -618,16 +678,31 @@ function revealAll(hand) {
     type: s.type,
     cards: [...s.cards],
     folded: s.folded,
+    tilt: s.tilt ?? 0,
     handName: hand.board.length >= 3 ? describe(evaluate([...s.cards, ...hand.board.slice(0, 5)], 2 + Math.min(hand.board.length, 5))) : null,
     showedDown: !s.folded && hand.street === 'river',
   }));
 }
 
-function conclude(session, hand, results) {
+function conclude(session, hand, results, won) {
   hand.finished = true;
   hand.results = results;
   session.handsPlayed += 1;
   session.net += results.heroNet;
+
+  // Pay the pots out into the stacks, and carry every stack to the next hand.
+  for (const [id, amount] of won) hand.seats.find((s) => s.id === id).stack += amount;
+  for (const seat of hand.seats) {
+    session.stacks[seat.id] = seat.stack;
+    if (seat.isHero) continue;
+    // Losing a big pot leaves a mark; it fades over the next few hands.
+    const net = seat.stack - seat.startStack;
+    const stinger = Math.max(20 * session.config.bigBlind, seat.startStack * 0.33);
+    session.tilt[seat.id] *= 0.45;
+    if (net <= -stinger) session.tilt[seat.id] = Math.max(session.tilt[seat.id], TILT_PRONE[seat.type] ?? 0.5);
+    if (session.tilt[seat.id] < 0.08) session.tilt[seat.id] = 0;
+  }
+
   log(hand, { kind: 'result', text: results.winnersText });
   return { kind: 'over', results };
 }

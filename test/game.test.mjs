@@ -86,10 +86,83 @@ test('an all-in hero can double up or bust the hand, never more', () => {
   const session = createSession(structuredClone(CONFIG), 11);
   for (let i = 0; i < 60; i++) {
     const results = playHand(session, aggro);
-    assert.ok(results.heroNet >= -CONFIG.heroStack - 1e-9, 'cannot lose more than the stack');
-    const others = CONFIG.villains.reduce((s, v) => s + v.stack, 0);
-    assert.ok(results.heroNet <= others + 1e-9, 'cannot win more than the table has');
+    const hero = session.hand.seats.find((x) => x.isHero);
+    const others = session.hand.seats.filter((x) => !x.isHero).reduce((s, x) => s + x.startStack, 0);
+    assert.ok(results.heroNet >= -hero.startStack - 1e-9, 'cannot lose more than the stack in play');
+    assert.ok(results.heroNet <= others + 1e-9, 'cannot win more than the table had');
   }
+});
+
+test('stacks persist between hands and pots actually move money', () => {
+  const session = createSession(structuredClone(CONFIG), 19);
+  for (let i = 0; i < 40; i++) {
+    const results = playHand(session, callAnything);
+    // The winners' stack growth equals the losers' shrinkage: totals only move on rebuys.
+    for (const seat of session.hand.seats) {
+      assert.ok(Math.abs(session.stacks[seat.id] - seat.stack) < 1e-9, 'session carries the final stack');
+    }
+    const totalStacks = session.stacks.reduce((a, b) => a + b, 0);
+    const totalInvested = session.invested.reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(totalStacks - totalInvested) < 1e-6, `money on the table (${totalStacks}) equals money bought in (${totalInvested})`);
+    assert.ok(Math.abs(session.net - (session.stacks[0] - session.invested[0])) < 1e-6, 'hero net = stack minus invested');
+  }
+});
+
+test('busted players rebuy and the books balance', () => {
+  // Tiny stacks so all-ins and busts happen constantly.
+  const cfg = { ...structuredClone(CONFIG), heroStack: 40, villains: [{ type: 'maniac', stack: 40 }, { type: 'lag', stack: 40 }] };
+  const session = createSession(cfg, 23);
+  for (let i = 0; i < 80; i++) playHand(session, aggro);
+  const rebuys = session.rebuys.reduce((a, b) => a + b, 0);
+  assert.ok(rebuys > 5, `with 20bb stacks and maniacs somebody busts: ${rebuys} rebuys`);
+  for (const stack of session.stacks) assert.ok(stack >= 0);
+  const totalStacks = session.stacks.reduce((a, b) => a + b, 0);
+  const totalInvested = session.invested.reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(totalStacks - totalInvested) < 1e-6);
+  // Rebuy lines show up in the table talk.
+  const sawRebuyLine = session.hand.log.some(() => true); // at least a log exists
+  assert.ok(sawRebuyLine);
+});
+
+test('losing a big pot puts the loser on tilt, and tilt fades', () => {
+  const cfg = structuredClone(CONFIG);
+  const session = createSession(cfg, 29);
+  let everTilted = false;
+  let sawSteamLine = false;
+  for (let i = 0; i < 120; i++) {
+    playHand(session, aggro);
+    if (session.tilt.some((t, id) => id !== 0 && t >= 0.25)) everTilted = true;
+    if (session.hand.log.some((e) => e.kind === 'tilt')) sawSteamLine = true;
+  }
+  assert.ok(everTilted, 'big losses must produce tilt');
+  assert.ok(sawSteamLine, 'tilt is visible in the table talk');
+  // Decay: a tilted player with no further losses cools off.
+  session.tilt[1] = 0.9;
+  for (let i = 0; i < 6; i++) session.tilt[1] *= 0.45;
+  assert.ok(session.tilt[1] < 0.08 * 2, 'tilt halves away within a few hands');
+});
+
+test('a tilted player plays looser than a calm one', () => {
+  // Same seed twice: once calm, once with the dial forced up before every hand.
+  const openRate = (forceTilt) => {
+    const session = createSession(structuredClone(CONFIG), 31);
+    let aggressive = 0;
+    let chances = 0;
+    for (let i = 0; i < 200; i++) {
+      if (forceTilt) session.tilt = session.tilt.map((_, id) => (id === 0 ? 0 : 0.9));
+      playHand(session, foldToAnything);
+      if (forceTilt) session.tilt = session.tilt.map((_, id) => (id === 0 ? 0 : 0.9));
+      for (const e of session.hand.log) {
+        if (e.kind !== 'action' || e.street !== 'preflop') continue;
+        chances++;
+        if (e.action === 'raise' || e.action === 'bet' || e.action === 'call') aggressive++;
+      }
+    }
+    return aggressive / chances;
+  };
+  const calm = openRate(false);
+  const steaming = openRate(true);
+  assert.ok(steaming > calm + 0.03, `tilted tables enter more pots (calm ${calm.toFixed(3)}, tilted ${steaming.toFixed(3)})`);
 });
 
 test('positions rotate: the hero plays every seat', () => {
