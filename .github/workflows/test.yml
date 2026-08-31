@@ -1,12 +1,13 @@
 name: Tests
 
+# The default branch runs its tests inside the Pages workflow, before deploying.
 on:
   push:
-    branches-ignore: [main]
   pull_request:
 
 jobs:
   test:
+    if: github.event_name == 'pull_request' || github.ref_name != github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

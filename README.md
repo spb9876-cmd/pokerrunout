@@ -10,6 +10,9 @@ more than the pot is worth. Runout takes that as its input rather than its footn
 
 **Live site:** https://spb9876-cmd.github.io/pokerrunout/
 
+To switch it on the first time: repository **Settings → Pages → Build and deployment → Source: GitHub
+Actions**. After that every push to the default branch runs the tests and, if they pass, publishes the site.
+
 ## What it does
 
 You build a spot — where you are playing, your seat and stack, your two cards, the board, the pot, and one
