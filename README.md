@@ -10,8 +10,10 @@ more than the pot is worth. Runout takes that as its input rather than its footn
 
 **Live site:** https://spb9876-cmd.github.io/pokerrunout/
 
-Every push to the default branch runs the tests and, if they pass, publishes the site. The deploy workflow
-turns Pages on by itself the first time it runs, so there is no settings switch to find.
+Pages needs switching on once, by someone with admin rights on the repository: **Settings → Pages → Build
+and deployment → Source: GitHub Actions**. (A workflow cannot do this for itself — creating a Pages site
+needs admin permission that `GITHUB_TOKEN` does not carry.) After that, every push to the default branch
+runs the tests and publishes the site if they pass.
 
 ## What it does
 

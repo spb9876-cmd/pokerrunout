@@ -34,11 +34,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # Pages has to be switched on once by hand, under
+      # Settings -> Pages -> Source: GitHub Actions. The workflow token cannot
+      # create the site itself: that needs repository admin rights.
       - uses: actions/configure-pages@v5
-        # Turns Pages on the first time this runs, so nobody has to go and flip
-        # a switch in the repository settings.
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
