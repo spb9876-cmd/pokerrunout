@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSession, startHand, step, heroAct, heroChoices, potTotal } from '../js/game.js';
+import * as tellsModule from '../js/tells.js';
 
 const CONFIG = {
   setting: 'casino_cash',
@@ -289,4 +290,24 @@ test('all-ins are an event, not the routine', () => {
     if (session.hand.log.some((e) => e.kind === 'action' && e.allIn)) withAllIn++;
   }
   assert.ok(withAllIn / hands < 0.1, `a sane 100bb table should rarely see stacks fly: ${((withAllIn / hands) * 100).toFixed(1)}% of hands had an all-in`);
+});
+
+test('lines aimed at one opponent only come out heads-up', () => {
+  const { maybeTell } = tellsModule;
+  const huOnly = /gonna show|let's see it then/;
+  const sample = (headsUp) => {
+    const found = new Set();
+    let seed = 0;
+    const rng = () => {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    };
+    for (let i = 0; i < 4000; i++) {
+      const tell = maybeTell({ typeId: 'recreational', settingId: 'home_cash', strong: false, aggressive: false, headsUp, rng });
+      if (tell) found.add(tell.text);
+    }
+    return [...found];
+  };
+  assert.ok(sample(false).every((t) => !huOnly.test(t)), 'multiway calls must never produce the heads-up lines');
+  assert.ok(sample(true).some((t) => huOnly.test(t)), 'heads-up calls can produce them');
 });

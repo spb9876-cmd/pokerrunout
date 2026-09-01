@@ -60,13 +60,13 @@ const CALL_STRONG = [
   'calls quickly and quietly, almost bored',
   'calls and immediately starts watching the next card',
   'calls while already cutting out chips for the next street',
-  '"let\'s see it then," they say, flicking in the call',
+  { text: '"let\'s see it then," they say, flicking in the call', hu: true },
 ];
 
 const CALL_WEAK = [
   'sighs and reluctantly slides the call in',
   'calls, then re-checks their cards',
-  'asks "if I fold, you gonna show?" — then calls anyway',
+  { text: 'asks "if I fold, you gonna show?" — then calls anyway', hu: true },
   'scratches their head and calls',
   'winces as the chips go in',
   'says "I know I\'m beat" and calls',
@@ -94,17 +94,23 @@ const TELL_FREQUENCY = {
   online_cash: 0.35,
 };
 
-const pick = (pool, rng) => pool[(rng() * pool.length) | 0];
+function pick(pool, rng, headsUp) {
+  const usable = pool.filter((entry) => typeof entry === 'string' || !entry.hu || headsUp);
+  const entry = usable[(rng() * usable.length) | 0];
+  return typeof entry === 'string' ? entry : entry.text;
+}
 
 /**
  * Maybe produce a tell for a villain action.
- * @param {object} spec { typeId, settingId, strong, aggressive, rng }
+ * @param {object} spec { typeId, settingId, strong, aggressive, headsUp, rng }
  *   strong: whether their actual hand is strong right now
  *   aggressive: bet/raise (true) or call (false)
+ *   headsUp: exactly two players left in the hand — lines spoken to one
+ *            specific opponent only come out then
  * @returns {null | { text, honest, signalsStrength }}
  *   signalsStrength: what the behaviour would classically mean from an honest player
  */
-export function maybeTell({ typeId, settingId, strong, aggressive, rng }) {
+export function maybeTell({ typeId, settingId, strong, aggressive, headsUp = false, rng }) {
   const frequency = (TELL_FREQUENCY[settingId] ?? 0.45) * (aggressive ? 1 : 0.55);
   if (rng() >= frequency) return null;
 
@@ -122,7 +128,7 @@ export function maybeTell({ typeId, settingId, strong, aggressive, rng }) {
       ? CALL_STRONG
       : CALL_WEAK;
 
-  return { text: pick(pool, rng), honest, signalsStrength };
+  return { text: pick(pool, rng, headsUp), honest, signalsStrength };
 }
 
 /** One line for the analysis: what the tell turned out to mean. */

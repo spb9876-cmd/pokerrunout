@@ -321,6 +321,7 @@ function villainTurn(session, hand, seat) {
       settingId: session.config.setting,
       strong: decision.strongHint,
       aggressive: decision.action === 'bet' || decision.action === 'raise',
+      headsUp: hand.seats.filter((x) => !x.folded).length <= 2,
       rng: hand.rng,
     });
   }
