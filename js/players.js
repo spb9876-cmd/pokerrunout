@@ -259,6 +259,21 @@ export const SETTINGS = [
     ],
   },
   {
+    id: 'online_tourney',
+    name: 'Online tournament',
+    format: 'tournament',
+    tagline: 'Fast blinds, re-entries, and a field that has seen every chart',
+    loosen: -0.02,
+    foldEquity: 1.0,
+    defaultType: 'tag',
+    riskPremium: 0.05,
+    notes: [
+      'The field is younger and more aggressive than live — expect three-bets and jams that live players never make.',
+      'Blind levels move fast online. A comfortable stack is two levels away from a desperate one; keep counting in big blinds.',
+      'Re-entry periods play like a cash game with an ante; the real ICM starts when the re-entries close.',
+    ],
+  },
+  {
     id: 'home_tourney',
     name: 'Home tournament',
     format: 'tournament',

@@ -99,8 +99,13 @@ Straightforward friend · Tricky regular you know · Unknown
 
 ### Settings
 
-Home game with friends · Casino cash game · Online cash game · Home tournament · Casino tournament
-(with early / middle / bubble / in-the-money / final table stages)
+Home game with friends · Casino cash game · Online cash game · Home tournament · Casino tournament ·
+Online tournament (tournaments carry early / middle / bubble / in-the-money / final table stages)
+
+The online games offer a **fresh table**: every opponent's real style is hidden behind "Unknown", and your
+read on each of them builds hand by hand from what you actually watch them do — loose or tight, aggressive
+or passive, then a guessed archetype once the sample is big enough. The coach grades you against the read
+you had earned at the time, not against the answer key.
 
 Any range can be overridden by hand with standard notation: `88+, ATs+, KQs`, `77-44`, `T9s-65s`,
 `AKo:0.5`, or just `15%`.

@@ -1221,10 +1221,56 @@ footer {
 }
 
 @media (max-width: 700px) {
+  #play-root {
+    padding-top: 10px;
+    gap: 10px;
+  }
   .table-stage {
-    min-height: 360px;
-    aspect-ratio: 1.15;
-    margin-top: 34px;
+    min-height: 300px;
+    aspect-ratio: 1.1;
+    margin: 22px 0 20px;
+  }
+  .session-bar {
+    padding: 8px 12px;
+    gap: 4px 14px;
+    font-size: 12.5px;
+  }
+  .session-bar .bar-next {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  /* The action bar rides the bottom of the screen: see the table, act, never scroll. */
+  #action-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.55);
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  #play-game {
+    padding-bottom: 170px; /* room so the fixed bar never covers the log or analysis buttons */
+  }
+  .action-buttons button {
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+  .turn-line {
+    margin-bottom: 7px;
+    font-size: 12.5px;
+  }
+  .hand-log {
+    max-height: 190px;
+  }
+  .board-center {
+    top: 46%;
+  }
+  .pot-plate {
+    padding: 3px 11px;
+    font-size: 12px;
   }
   .table-card {
     width: 32px;
@@ -1452,6 +1498,12 @@ footer {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.log-head > div:first-child {
+  flex: 1 1 180px;
+  min-width: 150px;
 }
 
 .pace-label {
@@ -1501,4 +1553,23 @@ button.advance {
 .custom-bet input:focus {
   outline: 2px solid var(--brass-dim);
   outline-offset: -1px;
+}
+
+.check-field .check-line {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  color: var(--ink-dim);
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.check-field input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--brass);
+  flex: none;
 }

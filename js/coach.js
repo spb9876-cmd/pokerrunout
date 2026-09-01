@@ -29,12 +29,14 @@ export function gradeHand(session, hand) {
     if (g.grade) session.grades[g.grade] += 1;
   }
 
-  const tells = decodeTells(hand);
+  const fresh = !!session.config.freshTable;
+  const shownType = (seat) => (fresh ? session.reads?.[seat.id]?.label ?? 'Unknown' : archetypeById(seat.type).name);
+  const tells = decodeTells(hand, shownType);
   const steam = hand.seats
     .filter((s) => !s.isHero && (s.tilt ?? 0) >= 0.25)
     .map(
       (s) =>
-        `${positionById(s.position).name} (${archetypeById(s.type).name}) came into this hand steaming from a big loss — wider and angrier than their usual ranges, so give their aggression a little less credit and their calls a little more rope.`
+        `${positionById(s.position).name} (${shownType(s)}) came into this hand steaming from a big loss — wider and angrier than their usual ranges, so give their aggression a little less credit and their calls a little more rope.`
     );
   const results = hand.results;
   const money = (n) => `${cfg.currency}${Math.round(Math.abs(n) * 100) / 100}`;
@@ -242,11 +244,11 @@ function gradeUnopened(session, hand, d, base) {
     }
   }
 
-  return { ...base, grade, verdict, detail: `Hand strength percentile against ${yard}.`, hand: null };
+  return { ...base, grade, verdict, detail: `Yardstick: ${yard}.`, hand: null };
 }
 
 /** What the body language was actually worth, tell by tell. */
-function decodeTells(hand) {
+function decodeTells(hand, shownType = (seat) => archetypeById(seat.type).name) {
   const out = [];
   const rng = mulberry32(hand.number * 31 + 7);
   for (const entry of hand.log) {
@@ -259,13 +261,14 @@ function decodeTells(hand) {
       entry.hiddenStrength !== undefined
         ? entry.hiddenStrength >= (entry.street === 'preflop' ? 0.88 : 0.7)
         : percentileOnBoard(seat.cards, board, rng) >= 0.7;
+    const displayName = shownType(seat);
     out.push({
       seat: entry.seat,
       position: positionById(seat.position).name,
-      type: arch.name,
+      type: displayName,
       reliability: TELL_RELIABILITY[seat.type] ?? 0.6,
       line: entry.text,
-      decoded: decodeTell(entry.tell, { typeName: arch.name, hadStrong: strong }),
+      decoded: decodeTell(entry.tell, { typeName: displayName, hadStrong: strong }),
     });
   }
   return out;

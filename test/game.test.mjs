@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSession, startHand, step, heroAct, heroChoices, potTotal } from '../js/game.js';
 import * as tellsModule from '../js/tells.js';
+import * as gameModule from '../js/game.js';
 
 const CONFIG = {
   setting: 'casino_cash',
@@ -310,4 +311,83 @@ test('lines aimed at one opponent only come out heads-up', () => {
   };
   assert.ok(sample(false).every((t) => !huOnly.test(t)), 'multiway calls must never produce the heads-up lines');
   assert.ok(sample(true).some((t) => huOnly.test(t)), 'heads-up calls can produce them');
+});
+
+test('betting always gets matched: nobody reaches showdown owing chips', () => {
+  // Short all-in raises used to end the round early, leaving the original
+  // bettor never asked to call the difference.
+  const cfg = {
+    setting: 'casino_cash', stage: 'early', currency: '$', smallBlind: 1, bigBlind: 2, heroStack: 50,
+    villains: [{ type: 'maniac', stack: 21 }, { type: 'station', stack: 47 }, { type: 'lag', stack: 90 }],
+  };
+  const session = createSession(structuredClone(cfg), 61);
+  for (let i = 0; i < 150; i++) {
+    const results = playHand(session, aggro);
+    if (results.kind !== 'showdown') continue;
+    const seats = session.hand.seats;
+    const active = seats.filter((s) => !s.folded && !s.allIn);
+    if (active.length === 0) continue;
+    const matched = active[0].contributed;
+    for (const seat of active) {
+      assert.ok(Math.abs(seat.contributed - matched) < 1e-9, 'all live non-all-in players must have matched the bet');
+    }
+    for (const seat of seats.filter((s) => !s.folded && s.allIn)) {
+      assert.ok(seat.contributed <= matched + 1e-9, 'an all-in cannot stand above an unmatched bet');
+    }
+  }
+});
+
+test('logged bet amounts are the chips that actually went in', () => {
+  const cfg = {
+    setting: 'casino_cash', stage: 'early', currency: '$', smallBlind: 1, bigBlind: 2, heroStack: 200,
+    villains: [{ type: 'maniac', stack: 15 }, { type: 'lag', stack: 200 }],
+  };
+  const session = createSession(structuredClone(cfg), 67);
+  for (let i = 0; i < 80; i++) {
+    playHand(session, foldToAnything);
+    for (const e of session.hand.log) {
+      if (e.kind !== 'action' || !/raises to|bets/.test(e.text ?? '')) continue;
+      const shown = Number((e.text.match(/\$([0-9.]+)/) ?? [])[1]);
+      if (!Number.isNaN(shown)) {
+        assert.ok(shown <= 200 + 1e-9, `no one can bet more than the biggest stack: "${e.text}"`);
+        assert.ok(Math.abs(shown - e.amount) < 1e-9, `text and amount agree: "${e.text}" vs ${e.amount}`);
+      }
+    }
+  }
+});
+
+test('a fresh table hides types and builds a read from observed play', () => {
+  const cfg = {
+    setting: 'online_cash', stage: 'early', currency: '$', smallBlind: 1, bigBlind: 2, heroStack: 200,
+    freshTable: true,
+    villains: [{ type: 'tag', stack: 200 }, { type: 'tag', stack: 200 }, { type: 'tag', stack: 200 }],
+  };
+  const session = createSession(structuredClone(cfg), 71);
+  assert.ok(session.secretTypes.slice(1).every((t) => t), 'every villain gets a hidden identity');
+
+  for (let i = 0; i < 20; i++) {
+    playHand(session, foldToAnything);
+    for (const e of session.hand.log) {
+      if (e.kind !== 'action') continue;
+      assert.doesNotMatch(e.text, /Nit|Maniac|Calling station|Tight-aggressive|Loose-aggressive|Recreational|Straightforward|Tricky/,
+        `the table talk must not leak a hidden type: "${e.text}"`);
+    }
+  }
+  // After 20 hands the reads have moved off "Unknown" and are stat-shaped.
+  const reads = session.reads.slice(1);
+  assert.ok(reads.every((r) => r.label !== 'Unknown'), `reads should have formed: ${reads.map((r) => r.label).join(' | ')}`);
+  assert.ok(reads.some((r) => r.typeId !== 'unknown'), 'by 20 hands at least one player has a guessed archetype');
+  // The observed numbers are real frequencies.
+  for (const obs of session.observed.slice(1)) {
+    assert.equal(obs.hands, 20);
+    assert.ok(obs.vpip <= obs.hands);
+  }
+});
+
+test('reads sort a maniac from a nit', () => {
+  const { computeRead } = gameModule;
+  const maniacish = computeRead({ hands: 30, vpip: 17, pfr: 12, aggr: 40, passive: 12 });
+  const nitish = computeRead({ hands: 30, vpip: 3, pfr: 2, aggr: 4, passive: 4 });
+  assert.equal(maniacish.typeId, 'maniac', maniacish.label);
+  assert.equal(nitish.typeId, 'nit', nitish.label);
 });

@@ -121,6 +121,13 @@ function renderSetup() {
           : `<label class="field"><span>Currency</span><input type="text" data-play="currency" value="${escape(config.currency)}" maxlength="3" /></label>`
       }
       ${
+        setting.id.startsWith('online')
+          ? `<label class="field wide check-field"><span>Fresh table</span>
+              <label class="check-line"><input type="checkbox" data-play="freshTable"${config.freshTable ? ' checked' : ''} />
+              Everyone starts as an unknown — their real style is hidden, and your read on each of them builds hand by hand from what you watch them do.</label></label>`
+          : ''
+      }
+      ${
         hasMoods(setting)
           ? `<label class="field wide"><span>How deep into the night</span>
               <select data-play="mood">${MOODS.map((m) => `<option value="${m.id}"${m.id === (config.mood ?? 'early') ? ' selected' : ''}>${escape(m.name)}</option>`).join('')}</select>
@@ -132,7 +139,9 @@ function renderSetup() {
       <label class="field"><span>Your buy-in</span><input type="number" inputmode="decimal" data-play="heroStack" value="${config.heroStack}" min="1" />
         <small class="hint">${(config.heroStack / (config.bigBlind || 1)).toFixed(0)} big blinds</small></label>
     </div>
-    <h3 class="subhead">The table (${config.villains.length + 1} seats)</h3>
+    <h3 class="subhead">The table (${config.villains.length + 1} seats)${
+      setting.id.startsWith('online') && config.freshTable ? ' — types below are ignored on a fresh table' : ''
+    }</h3>
     <div class="grid randomize-row">
       <label class="field"><span>Don't feel like picking?</span>
         <select id="random-count">${[2, 3, 4, 5, 6, 7, 8, 9]
@@ -196,7 +205,9 @@ function renderSeats() {
         <div class="plaque">
           <div class="plaque-row">
             <span class="pos-pip">${escape(positionById(seat.position).name)}</span>
-            <span class="seat-name">${seat.isHero ? 'You' : escape(archetypeById(seat.type).name)}</span>
+            <span class="seat-name">${
+              seat.isHero ? 'You' : escape(session.reads ? session.reads[seat.id].label : archetypeById(seat.type).name)
+            }</span>
             ${steaming ? '<span class="steam" title="Steaming after a big loss — expect wider, angrier play">🔥</span>' : ''}
           </div>
           <div class="plaque-row sub">
@@ -511,7 +522,7 @@ function onInput(event) {
   if (!el) return;
   const path = el.dataset.play.split('.');
   const numeric = ['smallBlind', 'bigBlind', 'heroStack', 'stack'];
-  const value = numeric.includes(path.at(-1)) ? Number(el.value) : el.value;
+  const value = el.type === 'checkbox' ? el.checked : numeric.includes(path.at(-1)) ? Number(el.value) : el.value;
   if (path[0] === 'villain') config.villains[Number(path[1])][path[2]] = value;
   else config[path[0]] = value;
   saveConfig();

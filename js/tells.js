@@ -87,11 +87,11 @@ export const TELL_RELIABILITY = {
 
 /** How often a tell is visible at all, by setting. */
 const TELL_FREQUENCY = {
-  home_cash: 0.6,
-  home_tourney: 0.6,
-  casino_cash: 0.45,
-  casino_tourney: 0.45,
-  online_cash: 0.35,
+  home_cash: 0.38,
+  home_tourney: 0.38,
+  casino_cash: 0.3,
+  casino_tourney: 0.3,
+  online_cash: 0.25,
 };
 
 function pick(pool, rng, headsUp) {
@@ -111,7 +111,7 @@ function pick(pool, rng, headsUp) {
  *   signalsStrength: what the behaviour would classically mean from an honest player
  */
 export function maybeTell({ typeId, settingId, strong, aggressive, headsUp = false, rng }) {
-  const frequency = (TELL_FREQUENCY[settingId] ?? 0.45) * (aggressive ? 1 : 0.55);
+  const frequency = (TELL_FREQUENCY[settingId] ?? 0.3) * (aggressive ? 1 : 0.4);
   if (rng() >= frequency) return null;
 
   const reliability = TELL_RELIABILITY[typeId] ?? 0.6;
@@ -138,5 +138,6 @@ export function decodeTell(tell, { typeName, hadStrong }) {
   const read = tell.honest
     ? `an honest read — they really were ${truth}`
     : `a false signal — they were actually ${truth}`;
-  return `“${tell.text}” classically signals ${meant}. From this ${typeName.toLowerCase()}, it was ${read}.`;
+  const who = /unknown|\?|≈/i.test(typeName) ? 'player' : typeName.toLowerCase();
+  return `“${tell.text}” classically signals ${meant}. From this ${who}, it was ${read}.`;
 }

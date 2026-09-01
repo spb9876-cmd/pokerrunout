@@ -38,8 +38,65 @@ export function createSession(config, seed = randomSeed()) {
     rebuys: new Array(config.villains.length + 1).fill(0),
     // Tilt: how much the last big loss is still steering each player, 0..1.
     tilt: new Array(config.villains.length + 1).fill(0),
+    // Fresh table: who they really are is hidden; you earn the read by watching.
+    secretTypes: config.freshTable ? assignSecretTypes(config, seed) : null,
+    observed: config.freshTable
+      ? Array.from({ length: config.villains.length + 1 }, () => ({ hands: 0, vpip: 0, pfr: 0, aggr: 0, passive: 0 }))
+      : null,
+    reads: config.freshTable
+      ? Array.from({ length: config.villains.length + 1 }, () => ({ label: 'Unknown', typeId: 'unknown' }))
+      : null,
     hand: null,
   };
+}
+
+const SECRET_POOL = ['nit', 'tag', 'lag', 'station', 'maniac', 'recreational', 'abc', 'tricky'];
+
+function assignSecretTypes(config, seed) {
+  const rng = mulberry32((seed ^ 0x9e3779b9) >>> 0);
+  const types = [null]; // seat 0 is the hero
+  for (let i = 0; i < config.villains.length; i++) types.push(SECRET_POOL[(rng() * SECRET_POOL.length) | 0]);
+  return types;
+}
+
+/**
+ * What the table has shown about each player so far, as fingerprints a player
+ * would actually track: how often they play a hand, raise first, and how much
+ * of their postflop action is aggression.
+ */
+const FINGERPRINTS = {
+  nit: { vpip: 0.11, pfr: 0.08, agg: 0.45 },
+  tag: { vpip: 0.2, pfr: 0.16, agg: 0.55 },
+  lag: { vpip: 0.33, pfr: 0.26, agg: 0.6 },
+  station: { vpip: 0.45, pfr: 0.05, agg: 0.15 },
+  maniac: { vpip: 0.55, pfr: 0.4, agg: 0.7 },
+  recreational: { vpip: 0.42, pfr: 0.1, agg: 0.3 },
+  abc: { vpip: 0.3, pfr: 0.12, agg: 0.35 },
+  tricky: { vpip: 0.28, pfr: 0.18, agg: 0.55 },
+};
+
+export function computeRead(obs) {
+  if (!obs || obs.hands < 6) return { label: 'Unknown', typeId: 'unknown' };
+  const vpip = obs.vpip / obs.hands;
+  const pfr = obs.pfr / obs.hands;
+  const agg = obs.aggr / Math.max(1, obs.aggr + obs.passive);
+
+  if (obs.hands >= 12) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const [typeId, f] of Object.entries(FINGERPRINTS)) {
+      const dist = (vpip - f.vpip) ** 2 * 2 + (pfr - f.pfr) ** 2 * 2 + (agg - f.agg) ** 2;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = typeId;
+      }
+    }
+    return { label: `≈ ${archetypeById(best).name}`, typeId: best, vpip, pfr, agg };
+  }
+
+  const looseness = vpip > 0.32 ? 'Loose' : vpip < 0.19 ? 'Tight' : 'Medium';
+  const temperament = agg > 0.45 ? 'aggressive' : agg < 0.25 ? 'passive' : 'balanced';
+  return { label: `${looseness}-${temperament}?`, typeId: 'unknown', vpip, pfr, agg };
 }
 
 /** How hard each type goes on tilt after losing a big pot. */
@@ -68,7 +125,7 @@ export function startHand(session) {
   const buyins = [cfg.heroStack, ...cfg.villains.map((v) => v.stack)];
   const players = buyins.map((buyin, i) => ({
     isHero: i === 0,
-    type: i === 0 ? 'hero' : cfg.villains[i - 1].type,
+    type: i === 0 ? 'hero' : session.secretTypes ? session.secretTypes[i] : cfg.villains[i - 1].type,
     stackSize: session.stacks[i],
     buyin,
   }));
@@ -131,7 +188,8 @@ export function startHand(session) {
   log(hand, { kind: 'deal', text: `Hand #${hand.number}. Blinds ${cfg.smallBlind}/${cfg.bigBlind} posted.` });
 
   // Rebuys and top-ups happen between hands, before the blinds go out.
-  const seatName = (seat) => (seat.isHero ? 'You' : `${positionById(seat.position).name} (${archetypeById(seat.type).name})`);
+  const seatName = (seat) =>
+    seat.isHero ? 'You' : session.secretTypes ? positionById(seat.position).name : `${positionById(seat.position).name} (${archetypeById(seat.type).name})`;
   for (const seat of seats) {
     const busted = seat.stack < cfg.bigBlind;
     const wantsTopUp = !seat.isHero && TOPS_UP.has(seat.type) && seat.stack < seat.buyin * 0.5;
@@ -280,12 +338,16 @@ function applyAction(session, hand, seat, action, amount = 0) {
     putChips(hand, seat, target - seat.streetPut);
     hand.currentBet = target;
     hand.raisesThisStreet += 1;
-    // A short all-in raise does not reopen the betting for players already done.
     if (increment >= hand.minRaise) {
+      // A full raise reopens the action for everyone.
       hand.minRaise = increment;
       hand.needAction = new Set(hand.seats.filter((s) => canAct(s) && s.id !== seat.id).map((s) => s.id));
     } else {
-      hand.needAction.delete(seat.id);
+      // A short all-in raise does not reopen raising, but anyone now short of
+      // the bet still owes a call-or-fold decision.
+      hand.needAction = new Set(
+        hand.seats.filter((s) => canAct(s) && s.id !== seat.id && s.streetPut < hand.currentBet).map((s) => s.id)
+      );
     }
   }
 
@@ -315,7 +377,8 @@ function villainTurn(session, hand, seat) {
   applyAction(session, hand, seat, decision.action, decision.amount);
 
   let tell = null;
-  if (decision.action !== 'fold' && decision.action !== 'check') {
+  const boringPreflopCall = hand.street === 'preflop' && decision.action === 'call';
+  if (decision.action !== 'fold' && decision.action !== 'check' && !boringPreflopCall) {
     tell = maybeTell({
       typeId: seat.type,
       settingId: session.config.setting,
@@ -332,7 +395,7 @@ function villainTurn(session, hand, seat) {
     position: seat.position,
     type: seat.type,
     action: decision.action,
-    amount: decision.action === 'call' ? hand.currentBet : decision.amount ?? 0,
+    amount: seat.streetPut,
     allIn: seat.allIn,
     pot: potTotal(hand),
     tell,
@@ -344,7 +407,9 @@ function villainTurn(session, hand, seat) {
 
 function actionText(session, hand, seat, decision, tell) {
   const cfg = session.config;
-  const name = `${positionById(seat.position).name} (${archetypeById(seat.type).name})`;
+  const name = session.secretTypes
+    ? positionById(seat.position).name
+    : `${positionById(seat.position).name} (${archetypeById(seat.type).name})`;
   const money = (n) => `${cfg.currency}${Math.round(n * 100) / 100}`;
   let base;
   switch (decision.action) {
@@ -358,10 +423,10 @@ function actionText(session, hand, seat, decision, tell) {
       base = `${name} calls ${money(seat.streetPut)}${seat.allIn ? ' — all in' : ''}`;
       break;
     case 'bet':
-      base = `${name} bets ${money(decision.amount)}${seat.allIn ? ' — all in' : ''}`;
+      base = `${name} bets ${money(seat.streetPut)}${seat.allIn ? ' — all in' : ''}`;
       break;
     case 'raise':
-      base = `${name} raises to ${money(decision.amount)}${seat.allIn ? ' — all in' : ''}`;
+      base = `${name} raises to ${money(seat.streetPut)}${seat.allIn ? ' — all in' : ''}`;
       break;
     default:
       base = `${name} ${decision.action}`;
@@ -404,6 +469,15 @@ function decideVillain(session, hand, seat) {
   };
 
   if (toCall <= 0) {
+    // The preflop raiser fires the flop at their continuation frequency — that
+    // is what a c-bet stat is — with fewer of them into a crowd.
+    if (hand.street === 'flop' && hand.currentBet === 0 && (seat.preflopRole === 'raised' || seat.preflopRole === '3bet')) {
+      const crowd = hand.seats.filter((x) => !x.folded).length;
+      if (rng() < arch.cbet * (crowd <= 3 ? 1 : 0.55) * (1 + tilt * 0.3)) {
+        const amount = snap(size() * (s >= 0.6 ? 1 : 0.75), cfg);
+        return { action: 'bet', amount, strength: s, strongHint: s >= 0.72 };
+      }
+    }
     // Can check or bet. Betting standards go up a notch on each later street —
     // firing three barrels needs a real hand, not a constant threshold.
     const streetBar = hand.street === 'river' ? 0.07 : hand.street === 'turn' ? 0.035 : 0;
@@ -590,7 +664,7 @@ export function heroAct(session, action, amount = 0) {
       .filter((s) => !s.isHero && !s.folded && (hand.street !== 'preflop' || s.lastAction !== null))
       .map((s) => ({
         position: s.position,
-        type: s.type,
+        type: session.reads ? session.reads[s.id].typeId : s.type,
         stack: s.stack,
         role: s.preflopRole ?? 'blind',
         streetAction: s.lastStreetActed === hand.street ? mapStreetAction(s.lastAction) : 'checked',
@@ -662,21 +736,32 @@ function finishShowdown(session, hand) {
 
   const hero = hand.seats.find((s) => s.isHero);
   const heroWon = won.get(hero.id) ?? 0;
-  const winnerNames = [...won.keys()].map((id) => {
-    const seat = hand.seats.find((s) => s.id === id);
+  const nameOf = (id) => {
+    const seat = hand.seats.find((x) => x.id === id);
     return seat.isHero ? 'you' : positionById(seat.position).name;
-  });
+  };
+
+  // The first pot built is the main pot; later ones are side pots.
+  const main = pots[0];
+  const mainNames = main.winners.map(nameOf);
+  const mainHand = describe(Math.max(...main.winners.map((id) => scores.get(id))));
+  let winnersText;
+  if (main.winners.length > 1) {
+    winnersText = `${mainNames.join(' and ')} split it with ${mainHand}.`;
+    if (main.winners.includes(hero.id)) winnersText = `Split pot — ${mainNames.join(' and ')} chop it with ${mainHand}.`;
+  } else if (main.winners[0] === hero.id) {
+    winnersText = `You win it with ${mainHand}.`;
+  } else {
+    winnersText = `${mainNames[0]} wins with ${mainHand}.`;
+  }
+  const sideWinners = [...new Set(pots.slice(1).flatMap((p) => p.winners).filter((id) => !main.winners.includes(id)))];
+  if (sideWinners.length > 0) winnersText += ` Side pot to ${sideWinners.map(nameOf).join(' and ')}.`;
 
   const results = {
     kind: 'showdown',
     pots,
     scores: Object.fromEntries(scores),
-    winnersText:
-      heroWon > 0
-        ? won.size > 1
-          ? `Split pot between ${winnerNames.join(' and ')}.`
-          : `You win it with ${describe(scores.get(hero.id))}.`
-        : `${winnerNames.join(' and ')} wins with ${describe(Math.max(...scores.values()))}.`,
+    winnersText,
     reveal: revealAll(hand),
     heroNet: heroNet(hand, won),
     potTotal: potTotal(hand),
@@ -712,6 +797,26 @@ function conclude(session, hand, results, won) {
 
   // Pay the pots out into the stacks, and carry every stack to the next hand.
   for (const [id, amount] of won) hand.seats.find((s) => s.id === id).stack += amount;
+
+  // On a fresh table, every completed hand sharpens the read.
+  if (session.observed) {
+    for (const seat of hand.seats) {
+      if (seat.isHero) continue;
+      const obs = session.observed[seat.id];
+      obs.hands += 1;
+      const voluntary =
+        ['raised', '3bet', 'called', 'limped'].includes(seat.preflopRole) ||
+        (seat.preflopRole === 'blind' && seat.contributed > session.config.bigBlind + 1e-9);
+      if (voluntary) obs.vpip += 1;
+      if (seat.preflopRole === 'raised' || seat.preflopRole === '3bet') obs.pfr += 1;
+      for (const e of hand.log) {
+        if (e.kind !== 'action' || e.seat !== seat.id) continue;
+        if (e.action === 'bet' || e.action === 'raise') obs.aggr += 1;
+        else if (e.action === 'call') obs.passive += 1;
+      }
+      session.reads[seat.id] = computeRead(obs);
+    }
+  }
   for (const seat of hand.seats) {
     session.stacks[seat.id] = seat.stack;
     if (seat.isHero) continue;
