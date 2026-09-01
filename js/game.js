@@ -566,8 +566,11 @@ export function heroAct(session, action, amount = 0) {
     heroPosition: hero.position,
     action,
     amount,
+    // Preflop, a player who has not acted yet is not in the pot — they fold
+    // most hands, and counting them as live opposition wrecks the price math.
+    // After the flop everyone still seated has a real range, acted or not.
     villains: hand.seats
-      .filter((s) => !s.isHero && !s.folded)
+      .filter((s) => !s.isHero && !s.folded && (hand.street !== 'preflop' || s.lastAction !== null))
       .map((s) => ({
         position: s.position,
         type: s.type,

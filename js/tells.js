@@ -6,15 +6,22 @@
 // meant what you thought it meant.
 
 // Behaviours that, from an honest player, usually mean a big hand.
+// (Yes, shaking hands means strong — that is adrenaline, not fear.)
 const LIVE_STRONG = [
   'takes a long drink before pushing the chips in',
   'goes very still and quiet',
   'starts stacking chips before the action even reaches them',
   'suddenly stops talking mid-story',
-  'hands tremble slightly cutting out the bet',
+  'hands are shaking as they push the chips in',
   'leans back and relaxes into the chair',
   'double-checks their cards, then bets without hesitating',
   'glances at their own stack the moment the card lands',
+  'gets talkative all of a sudden, chatting away like nothing is happening',
+  'asks how much you have behind, then bets anyway',
+  'neatens their chip stack while they wait on you',
+  'says "your turn" a little too cheerfully',
+  'slides the bet in gently, almost politely',
+  'starts telling a story about last week\'s game mid-bet',
 ];
 
 // Behaviours that, from an honest player, usually mean weakness or a bluff.
@@ -24,31 +31,45 @@ const LIVE_WEAK = [
   'holds their breath after the chips go in',
   'shrugs and says "one time" while betting',
   'slams the chips in a little too forcefully',
-  'starts chatting at you right after betting',
   'counts out the bet slowly, watching for your reaction',
   'sits bolt upright, frozen, after the bet',
+  'scratches their head, then puts the chips in anyway',
+  'checks their cards a third time before betting',
+  'asks the dealer what the pot is, twice',
+  'mutters "you probably got me" while betting',
+  'talks you through their whole "decision" out loud',
+  'covers their mouth right after the chips go in',
+  'suddenly cannot sit still — bouncing knee, drumming fingers',
 ];
 
 const ONLINE_STRONG = [
   'snap-acts, no pause at all',
   'tanks nearly the full clock, then puts the bet in',
   'instantly ups the bet slider to a strange, precise number',
+  'types "gl" in chat before the bet lands',
 ];
 
 const ONLINE_WEAK = [
   'pauses, types something in chat, deletes it, then bets',
   'uses the exact same sizing they just showed a bluff with',
   'waits out the clock and bets at the last second',
+  'sits out the next hand the moment the bet is in',
 ];
 
 const CALL_STRONG = [
   'calls quickly and quietly, almost bored',
   'calls and immediately starts watching the next card',
+  'calls while already cutting out chips for the next street',
+  '"let\'s see it then," they say, flicking in the call',
 ];
 
 const CALL_WEAK = [
   'sighs and reluctantly slides the call in',
   'calls, then re-checks their cards',
+  'asks "if I fold, you gonna show?" — then calls anyway',
+  'scratches their head and calls',
+  'winces as the chips go in',
+  'says "I know I\'m beat" and calls',
 ];
 
 /** How much of what this player's body says is actually true. */

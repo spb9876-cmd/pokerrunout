@@ -5,8 +5,10 @@
 // held, and which of the tells were telling the truth.
 
 import { analyse } from './engine.js';
+import { handCode } from './cards.js';
+import { RANGE_CUTOFF } from './data/preflop.js';
 import { equityVsRanges } from './equity.js';
-import { archetypeById, positionById } from './players.js';
+import { archetypeById, positionById, settingById } from './players.js';
 import { readHand } from './handstrength.js';
 import { decodeTell, TELL_RELIABILITY } from './tells.js';
 import { percentileOnBoard } from './handstrength.js';
@@ -73,6 +75,9 @@ function gradeDecision(session, hand, d, index) {
   };
 
   if (d.villains.length === 0) {
+    // Nobody has entered the pot in front of the hero. There is no range to
+    // simulate against, so grade the open/fold against where the hand sits.
+    if (d.street === 'preflop') return gradeUnopened(session, hand, d, base);
     return { ...base, grade: null, verdict: 'Everyone had already folded — nothing to decide.', detail: '' };
   }
 
@@ -175,6 +180,69 @@ function gradeDecision(session, hand, d, index) {
 }
 
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
+
+/**
+ * Grade a preflop decision in an unopened pot: nobody in front has entered,
+ * so the question is simply whether this hand plays from this seat.
+ */
+function gradeUnopened(session, hand, d, base) {
+  const hero = hand.seats.find((s) => s.isHero);
+  const p = RANGE_CUTOFF[handCode(hero.cards[0], hero.cards[1])] ?? 1;
+  const setting = settingById(session.config.setting);
+  const group = positionById(d.heroPosition).group;
+  // A solid player's opening width from this seat is the yardstick.
+  const width = Math.min(archetypeById('tag').openBy[group] * (1 + setting.loosen * 2), 0.95);
+  const seat = positionById(d.heroPosition).label.toLowerCase();
+  const rank = `top ${(p * 100).toFixed(0)}%`;
+  const yard = `a solid player opens about the top ${(width * 100).toFixed(0)}% from the ${seat}`;
+  const aggressive = d.action === 'bet' || d.action === 'raise';
+
+  let grade;
+  let verdict;
+  if (d.action === 'check') {
+    grade = 'good';
+    verdict = 'A free look at the flop costs nothing. Never fold when you can check.';
+  } else if (d.action === 'fold') {
+    if (p <= width * 0.7) {
+      grade = 'mistake';
+      verdict = `That fold gave up a hand this seat plays: it is in the ${rank} of hands, and ${yard}.`;
+    } else if (p <= width * 1.3) {
+      grade = 'ok';
+      verdict = `Borderline — the hand is in the ${rank}, right at the edge of what opens from the ${seat}.`;
+    } else {
+      grade = 'good';
+      verdict = `Folding was right: the hand is only in the ${rank}, and ${yard}.`;
+    }
+  } else if (aggressive) {
+    if (p <= width) {
+      grade = 'good';
+      verdict = `Opening was right — the hand is in the ${rank}, and ${yard}.`;
+    } else if (p <= width * 1.6) {
+      grade = 'ok';
+      verdict = `A loose open: the hand is in the ${rank} against a usual ${(width * 100).toFixed(0)}% from the ${seat}. Playable in the right seat with the right table.`;
+    } else {
+      grade = 'mistake';
+      verdict = `Opening this is lighting money: the hand is only in the ${rank}, and ${yard}.`;
+    }
+  } else {
+    // Limping or completing.
+    const cheap = d.toCall <= session.config.bigBlind * 0.6;
+    if (p <= width * 0.6 && !cheap) {
+      grade = 'ok';
+      verdict = `The hand is strong enough (${rank}) that raising beats limping — take the pot or build it.`;
+    } else if (cheap || p <= width * 1.8) {
+      grade = 'good';
+      verdict = cheap
+        ? `Completing cheap with a playable hand (${rank}) is fine — you are getting a discount to see a flop.`
+        : `Limping along with a ${rank} hand is reasonable here.`;
+    } else {
+      grade = 'ok';
+      verdict = `Thin — the hand is only in the ${rank}. Cheap flops are fine, but do not pay much for this one.`;
+    }
+  }
+
+  return { ...base, grade, verdict, detail: `Hand strength percentile against ${yard}.`, hand: null };
+}
 
 /** What the body language was actually worth, tell by tell. */
 function decodeTells(hand) {

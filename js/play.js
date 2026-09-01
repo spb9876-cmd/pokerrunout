@@ -106,6 +106,16 @@ function renderSetup() {
         <small class="hint">${(config.heroStack / (config.bigBlind || 1)).toFixed(0)} big blinds</small></label>
     </div>
     <h3 class="subhead">The table (${config.villains.length + 1} seats)</h3>
+    <div class="grid randomize-row">
+      <label class="field"><span>Don't feel like picking?</span>
+        <select id="random-count">${[2, 3, 4, 5, 6, 7, 8, 9]
+          .map((n) => `<option value="${n}"${n === config.villains.length + 1 ? ' selected' : ''}>${n} players</option>`)
+          .join('')}</select>
+      </label>
+      <div class="field"><span>&nbsp;</span>
+        <button type="button" data-do="randomize">🎲 Randomize the table</button>
+      </div>
+    </div>
     ${rows}
     <button type="button" class="add" data-do="add-villain">+ Add an opponent</button>
     <div class="actions" style="margin-top:16px">
@@ -229,6 +239,7 @@ function renderSessionBar() {
     <span>Stack: <strong>${money(session.stacks[0])}</strong> · in for ${money(invested)}${rebuys ? ` (${rebuys + 1} buy-ins)` : ''}</span>
     <span>Session: <strong class="${netClass}">${session.net >= 0 ? '+' : '−'}${money(Math.abs(session.net))}</strong> over ${session.handsPlayed} hand${session.handsPlayed === 1 ? '' : 's'}</span>
     <span title="decisions the coach agreed with / close calls / clear mistakes"><strong>${g.good}</strong> good · <strong>${g.ok}</strong> close · <strong>${g.mistake}</strong> mistake${g.mistake === 1 ? '' : 's'}</span>
+    ${hand?.finished ? '<button type="button" class="primary bar-next" data-do="next-hand">Next hand</button>' : ''}
     <button type="button" class="ghost" data-do="end-session">Change setup</button>`;
 }
 
@@ -289,7 +300,11 @@ function renderActionPanel(ev) {
   }
   panel.hidden = false;
   if (!ev) {
-    panel.innerHTML = '<p class="hint">The action is going around…</p>';
+    const hero = session.hand.seats.find((s) => s.isHero);
+    panel.innerHTML = hero.folded
+      ? `<div class="fold-wait"><p class="hint">You folded — the rest of the hand plays out.</p>
+         <button type="button" class="ghost" data-do="skip-hand">Skip to the result</button></div>`
+      : '<p class="hint">The action is going around…</p>';
     return;
   }
   const buttons = [];
@@ -309,6 +324,34 @@ function renderActionPanel(ev) {
   panel.innerHTML = `
     <p class="turn-line">Your turn — ${ev.toCall > 0 ? `${money(ev.toCall)} to call` : 'no bet to you'} · pot ${money(ev.pot)} · ${money(ev.stack)} behind</p>
     <div class="action-buttons">${buttons.join('')}</div>`;
+}
+
+/** Play the rest of the hand out instantly — used after the hero folds. */
+function fastForwardHand() {
+  if (!session?.hand || session.hand.finished) return;
+  runToken++; // the paced loop bails out at its next tick
+  awaiting = null;
+  let guard = 0;
+  for (;;) {
+    if (++guard > 500) break;
+    const ev = step(session);
+    if (ev.kind === 'action') {
+      appendLog(ev.text, ev.tell ? 'tell' : '');
+    } else if (ev.kind === 'street') {
+      appendLog(`— ${ev.street[0].toUpperCase()}${ev.street.slice(1)} —`, 'street-line');
+    } else if (ev.kind === 'hero-turn') {
+      // Cannot happen once the hero has folded, but never spin on it.
+      awaiting = ev;
+      renderTable();
+      renderActionPanel(ev);
+      return;
+    } else if (ev.kind === 'over') {
+      renderTable();
+      renderActionPanel(null);
+      finishHand(ev.results);
+      return;
+    }
+  }
 }
 
 function finishHand(results) {
@@ -415,6 +458,17 @@ function onClick(event) {
   const doBtn = event.target.closest('[data-do]');
   if (doBtn) {
     const action = doBtn.dataset.do;
+    if (action === 'randomize') {
+      const total = Number(root.querySelector('#random-count')?.value ?? 6);
+      const pool = ARCHETYPES.filter((a) => a.id !== 'unknown');
+      config.villains = Array.from({ length: Math.max(1, total - 1) }, () => ({
+        type: pool[Math.floor(Math.random() * pool.length)].id,
+        stack: config.heroStack,
+      }));
+      saveConfig();
+      renderSetup();
+      return;
+    }
     if (action === 'add-villain') {
       if (config.villains.length < 8) config.villains.push({ type: settingById(config.setting).defaultType, stack: config.heroStack });
       saveConfig();
@@ -435,6 +489,8 @@ function onClick(event) {
       nextHand();
     } else if (action === 'next-hand') {
       nextHand();
+    } else if (action === 'skip-hand') {
+      fastForwardHand();
     } else if (action === 'end-session') {
       runToken++;
       session = null;
