@@ -33,6 +33,14 @@ bets, fewer folds — fading back to normal over the next few hands. Tilt is the
 for free: the table talk says who is steaming, their seat shows it, and the post-hand analysis reminds you
 what their aggression was worth while it lasted.
 
+The home game also has a clock: pick how deep into the night it is — early evening plays honest and
+casual, and by the stuck-and-steaming hours the whole table runs hotter, exactly the way the real thing
+drifts as the night goes on. The night can move on mid-session without resetting the score.
+
+Hands play at your pace — relaxed, quick, or tap-through one action at a time so nothing scrolls past
+unread. Bets can be the quick presets or any custom amount. A dice button fills the table with random
+player types when you do not feel like choosing.
+
 Tells show up in the table talk beside the felt (*"takes a long drink before pushing the chips in"*) — and
 whether they mean anything depends on who they came from: the straightforward friend's body tells the truth
 about 85% of the time, the tricky regular you know runs backwards more often than not.

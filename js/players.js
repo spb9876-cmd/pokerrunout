@@ -330,3 +330,57 @@ export function hasPositionOn(a, b) {
   const order = ['sb', 'bb', 'utg', 'utg1', 'mp', 'lj', 'hj', 'co', 'btn'];
   return order.indexOf(a) > order.indexOf(b);
 }
+
+/**
+ * How deep into the night a home game is. The same table plays three different
+ * games between eight o'clock and two in the morning: ranges drift wider, the
+ * stuck players stop folding, and the pots grow to match.
+ *
+ *   heat        baseline tilt applied to everyone at the table
+ *   loosen      added on top of the setting's loosen
+ *   foldEquity  multiplier on how often bluffs get through
+ */
+export const MOODS = [
+  {
+    id: 'early',
+    name: 'Early evening — casual',
+    heat: 0,
+    loosen: 0,
+    foldEquity: 1,
+    note: 'Everyone is fresh and playing their normal game. Pots are honest and a big bet means it.',
+  },
+  {
+    id: 'swing',
+    name: 'Mid-session — loosening up',
+    heat: 0.12,
+    loosen: 0.05,
+    foldEquity: 0.94,
+    note: 'A few drinks and a few lost pots in. Ranges are drifting wider and calls come easier than folds.',
+  },
+  {
+    id: 'late',
+    name: 'Late night — stuck and steaming',
+    heat: 0.3,
+    loosen: 0.12,
+    foldEquity: 0.84,
+    note: 'The stuck players are chasing it back before the night ends. Aggression is up and folding is out of fashion — stop bluffing, start charging.',
+  },
+];
+
+export const moodById = (id) => MOODS.find((m) => m.id === id) ?? MOODS[0];
+
+/** Does this setting have a night to get deep into? */
+export const hasMoods = (setting) => setting.id === 'home_cash';
+
+/** The setting as it actually plays at this hour of the night. */
+export function applyMood(setting, moodId) {
+  if (!hasMoods(setting) || !moodId) return setting;
+  const mood = moodById(moodId);
+  if (mood.id === 'early') return setting;
+  return {
+    ...setting,
+    loosen: setting.loosen + mood.loosen,
+    foldEquity: setting.foldEquity * mood.foldEquity,
+    notes: [mood.note, ...setting.notes],
+  };
+}

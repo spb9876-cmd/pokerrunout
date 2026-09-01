@@ -9,7 +9,7 @@ import { handCode, cardName } from './cards.js';
 import { evaluate, describe } from './evaluator.js';
 import { RANGE_CUTOFF } from './data/preflop.js';
 import { percentileOnBoard, drawsFor } from './handstrength.js';
-import { archetypeById, settingById, positionById, seatsForTableSize } from './players.js';
+import { archetypeById, settingById, positionById, seatsForTableSize, applyMood, moodById, hasMoods } from './players.js';
 import { foldFrequency } from './engine.js';
 import { maybeTell } from './tells.js';
 import { mulberry32, randomSeed } from './rng.js';
@@ -376,12 +376,15 @@ function snap(amount, cfg) {
 
 function decideVillain(session, hand, seat) {
   const cfg = session.config;
-  const setting = settingById(cfg.setting);
+  const baseSetting = settingById(cfg.setting);
+  const setting = applyMood(baseSetting, cfg.mood);
   const arch = archetypeById(seat.type);
   const rng = hand.rng;
   const toCall = hand.currentBet - seat.streetPut;
   const pot = potTotal(hand);
-  const tilt = seat.tilt ?? 0;
+  // Late-night heat rides the same dial as tilt: the whole table plays angrier.
+  const heat = hasMoods(baseSetting) ? moodById(cfg.mood).heat : 0;
+  const tilt = Math.min(1, (seat.tilt ?? 0) + heat);
 
   if (hand.street === 'preflop') return decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot, tilt });
 
@@ -391,11 +394,19 @@ function decideVillain(session, hand, seat) {
   const strongHint = s >= 0.72;
 
   // Tilt makes everything angrier: more bets, bigger bets, fewer folds.
-  const size = () => betSize(arch, pot, rng) * (1 + tilt * 0.35);
+  // The commit guard keeps a merely-good hand from torching the whole stack:
+  // nobody bets two-thirds of what they have behind with second pair.
+  const size = () => {
+    let amount = betSize(arch, pot, rng) * (1 + tilt * 0.35);
+    if (amount > seat.stack * 0.55 && s < 0.9) amount = Math.min(amount, pot * 0.5);
+    return amount;
+  };
 
   if (toCall <= 0) {
-    // Can check or bet.
-    const valueLine = 0.78 - (arch.cbet - 0.5) * 0.35 - tilt * 0.1;
+    // Can check or bet. Betting standards go up a notch on each later street —
+    // firing three barrels needs a real hand, not a constant threshold.
+    const streetBar = hand.street === 'river' ? 0.07 : hand.street === 'turn' ? 0.035 : 0;
+    const valueLine = 0.78 - (arch.cbet - 0.5) * 0.35 - tilt * 0.1 + streetBar;
     if (s >= valueLine) {
       const amount = snap(hand.currentBet + size(), cfg);
       return { action: hand.currentBet > 0 ? 'raise' : 'bet', amount, strength: s, strongHint };
@@ -415,26 +426,27 @@ function decideVillain(session, hand, seat) {
   const forStack = toCall >= seat.stack;
 
   if (forStack) {
-    const commit = 0.62 + Math.min(ratio, 1.5) * 0.08 - (arch.calldown - 0.5) * 0.3;
-    if (s >= commit || (bigDraw && hand.street === 'flop' && rng() < 0.5)) {
+    const commit = 0.68 + Math.min(ratio, 1.5) * 0.08 - (arch.calldown - 0.5) * 0.3;
+    if (s >= commit || (bigDraw && hand.street === 'flop' && rng() < 0.3)) {
       return { action: 'call', strength: s, strongHint };
     }
     return { action: 'fold', strength: s, strongHint: false };
   }
 
-  if (s >= 0.93 && rng() < 0.35 + arch.raiseBluff * 0.5) {
-    const amount = snap(hand.currentBet + Math.max(hand.minRaise, toCall * 2 + pot * 0.4), cfg);
+  const warDampener = hand.raisesThisStreet >= 2 ? 0.3 : 1; // re-re-raises should be rare, not routine
+  if (s >= 0.93 && rng() < (0.22 + arch.raiseBluff * 0.3) * warDampener) {
+    const amount = snap(Math.max(hand.currentBet + hand.minRaise, hand.currentBet * 2.2 + pot * 0.22), cfg);
     return { action: 'raise', amount, strength: s, strongHint: true };
   }
   if (s < foldLine && !bigDraw) {
-    if (rng() < arch.raiseBluff * 0.2 * (1 + tilt) && hand.street !== 'river' && hand.raisesThisStreet < 2) {
-      const amount = snap(hand.currentBet + Math.max(hand.minRaise, pot * 0.6), cfg);
+    if (rng() < arch.raiseBluff * 0.15 * (1 + tilt) && hand.street !== 'river' && hand.raisesThisStreet < 2) {
+      const amount = snap(Math.max(hand.currentBet + hand.minRaise, hand.currentBet * 2.2 + pot * 0.2), cfg);
       return { action: 'raise', amount, strength: s, strongHint: false };
     }
     return { action: 'fold', strength: s, strongHint: false };
   }
-  if (bigDraw && hand.street !== 'river' && rng() < arch.raiseBluff * 0.4) {
-    const amount = snap(hand.currentBet + Math.max(hand.minRaise, pot * 0.7), cfg);
+  if (bigDraw && hand.street !== 'river' && hand.raisesThisStreet < 2 && rng() < arch.raiseBluff * 0.22) {
+    const amount = snap(Math.max(hand.currentBet + hand.minRaise, hand.currentBet * 2.2 + pot * 0.2), cfg);
     return { action: 'raise', amount, strength: s, strongHint: true };
   }
   return { action: 'call', strength: s, strongHint };
@@ -478,11 +490,13 @@ function decidePreflop(session, hand, seat, { setting, arch, rng, toCall, pot, t
   const forBigChunk = toCall >= seat.stack * 0.55;
 
   if (forBigChunk) {
-    const width = Math.max(threeBetWidth, 0.05) * (arch.calldown > 0.7 ? 2.2 : 1.2);
+    const width = Math.min(Math.max(threeBetWidth * 0.8, 0.03) * (arch.calldown > 0.7 ? 1.7 : 1), 0.12);
     return p <= width ? { action: 'call', strength, strongHint } : { action: 'fold', strength, strongHint: false };
   }
-  if (p <= threeBetWidth || (rng() < arch.raiseBluff * 0.12 * (1 + tilt * 2) && p > 0.2 && p < 0.45)) {
-    const amount = snap(hand.currentBet * (2.6 + rng() * 0.8) + potDead(hand, seat), cfg);
+  const bluffReraise = reraises < 2 && rng() < arch.raiseBluff * 0.12 * (1 + tilt * 2) && p > 0.2 && p < 0.45;
+  if (p <= threeBetWidth || bluffReraise) {
+    const multiple = reraises >= 2 ? 2.1 + rng() * 0.4 : 2.6 + rng() * 0.8;
+    const amount = snap(hand.currentBet * multiple + potDead(hand, seat), cfg);
     return { action: 'raise', amount, strength, strongHint: p <= threeBetWidth };
   }
   if (p <= callWidth || (seat.position === 'bb' && p <= (callWidth + 0.12) * widen)) {
@@ -500,7 +514,7 @@ const limperCount = (hand) => hand.seats.filter((s) => !s.folded && s.preflopRol
 const potDead = (hand, seat) => hand.seats.reduce((sum, s) => (s === seat ? sum : sum + s.streetPut), 0) * 0.2;
 
 function betSize(arch, pot, rng) {
-  const base = { nit: 0.5, tag: 0.62, lag: 0.75, station: 0.4, maniac: 0.95, recreational: 0.55, abc: 0.55, tricky: 0.66, unknown: 0.6 }[arch.id] ?? 0.6;
+  const base = { nit: 0.5, tag: 0.6, lag: 0.68, station: 0.4, maniac: 0.82, recreational: 0.52, abc: 0.52, tricky: 0.62, unknown: 0.58 }[arch.id] ?? 0.58;
   return pot * base * (0.88 + rng() * 0.28);
 }
 
@@ -544,6 +558,8 @@ export function heroChoices(session) {
     canFold: toCall > 0,
     call: toCall,
     sizes,
+    minRaiseTo: minTo,
+    maxTo,
     street: hand.street,
     board: [...hand.board],
     heroCards: [...hero.cards],

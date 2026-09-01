@@ -5,7 +5,7 @@
 import { rankOf, suitOf, RANKS, SUIT_SYMBOLS } from './cards.js';
 import { createSession, startHand, step, heroAct, potTotal } from './game.js';
 import { gradeHand } from './coach.js';
-import { ARCHETYPES, SETTINGS, STAGES, archetypeById, settingById, positionById } from './players.js';
+import { ARCHETYPES, SETTINGS, STAGES, MOODS, archetypeById, settingById, positionById, moodById, hasMoods } from './players.js';
 
 const CONFIG_KEY = 'runout.play.v1';
 const escape = (s) =>
@@ -18,6 +18,25 @@ let session = null;
 let runToken = 0;
 let awaiting = null; // the hero-turn event we are waiting on
 let shownBoard = 0; // how many board cards have already animated in
+let pace = 'relaxed'; // relaxed | quick | step
+let advanceResolver = null; // pending "next action" click in step mode
+
+try {
+  pace = localStorage.getItem('runout.pace') || 'relaxed';
+} catch {
+  /* default stands */
+}
+
+const PACE_DELAYS = {
+  relaxed: { action: () => 950 + Math.random() * 350, tell: 1700, street: 1200 },
+  quick: { action: () => 420 + Math.random() * 220, tell: 900, street: 650 },
+};
+
+function unblockAdvance() {
+  const resolve = advanceResolver;
+  advanceResolver = null;
+  resolve?.();
+}
 
 /* ------------------------------------------------------------------- config */
 
@@ -29,6 +48,7 @@ function defaultConfig() {
     smallBlind: 1,
     bigBlind: 2,
     heroStack: 200,
+    mood: 'early',
     villains: [
       { type: 'recreational', stack: 200 },
       { type: 'abc', stack: 200 },
@@ -99,6 +119,13 @@ function renderSetup() {
         tournament
           ? `<label class="field"><span>Stage</span><select data-play="stage">${STAGES.map((s) => `<option value="${s.id}"${s.id === config.stage ? ' selected' : ''}>${escape(s.name)}</option>`).join('')}</select></label>`
           : `<label class="field"><span>Currency</span><input type="text" data-play="currency" value="${escape(config.currency)}" maxlength="3" /></label>`
+      }
+      ${
+        hasMoods(setting)
+          ? `<label class="field wide"><span>How deep into the night</span>
+              <select data-play="mood">${MOODS.map((m) => `<option value="${m.id}"${m.id === (config.mood ?? 'early') ? ' selected' : ''}>${escape(m.name)}</option>`).join('')}</select>
+              <small class="hint">${escape(moodById(config.mood ?? 'early').note)}</small></label>`
+          : ''
       }
       <label class="field"><span>Small blind</span><input type="number" inputmode="decimal" data-play="smallBlind" value="${config.smallBlind}" min="0.5" step="0.5" /></label>
       <label class="field"><span>Big blind</span><input type="number" inputmode="decimal" data-play="bigBlind" value="${config.bigBlind}" min="1" step="0.5" /></label>
@@ -261,6 +288,18 @@ function appendLog(text, cls = '') {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function pause(kind, hasTell) {
+  if (pace === 'step') {
+    renderActionPanel(null); // shows the "next action" button
+    await new Promise((resolve) => {
+      advanceResolver = resolve;
+    });
+    return;
+  }
+  const speeds = PACE_DELAYS[pace] ?? PACE_DELAYS.relaxed;
+  await delay(kind === 'street' ? speeds.street : hasTell ? speeds.tell : speeds.action());
+}
+
 async function runHand() {
   const token = ++runToken;
   awaiting = null;
@@ -271,11 +310,11 @@ async function runHand() {
     if (ev.kind === 'action') {
       appendLog(ev.text, ev.tell ? 'tell' : '');
       renderTable();
-      await delay(ev.tell ? 950 : 450 + Math.random() * 250);
+      await pause('action', !!ev.tell);
     } else if (ev.kind === 'street') {
       appendLog(`— ${ev.street[0].toUpperCase()}${ev.street.slice(1)} —`, 'street-line');
       renderTable();
-      await delay(700);
+      await pause('street', false);
     } else if (ev.kind === 'hero-turn') {
       awaiting = ev;
       renderTable();
@@ -301,10 +340,14 @@ function renderActionPanel(ev) {
   panel.hidden = false;
   if (!ev) {
     const hero = session.hand.seats.find((s) => s.isHero);
-    panel.innerHTML = hero.folded
-      ? `<div class="fold-wait"><p class="hint">You folded — the rest of the hand plays out.</p>
-         <button type="button" class="ghost" data-do="skip-hand">Skip to the result</button></div>`
-      : '<p class="hint">The action is going around…</p>';
+    const stepButton = pace === 'step' ? '<button type="button" class="advance" data-do="advance">▸ Next action</button>' : '';
+    const skipButton = hero.folded ? '<button type="button" class="ghost" data-do="skip-hand">Skip to the result</button>' : '';
+    const hint = hero.folded
+      ? 'You folded — the rest of the hand plays out.'
+      : pace === 'step'
+        ? 'Step through at your own speed.'
+        : 'The action is going around…';
+    panel.innerHTML = `<div class="fold-wait"><p class="hint">${hint}</p>${stepButton}${skipButton}</div>`;
     return;
   }
   const buttons = [];
@@ -321,9 +364,18 @@ function renderActionPanel(ev) {
       } ${money(size.to)} <small>${escape(size.label)}</small></button>`
     );
   }
+  const custom =
+    ev.sizes.length > 0
+      ? `<div class="custom-bet">
+          <input type="number" id="custom-amount" inputmode="decimal" min="${ev.minRaiseTo}" max="${ev.maxTo}"
+            step="${session.config.smallBlind}" placeholder="${session.hand.currentBet > 0 ? 'Raise to…' : 'Bet…'}" />
+          <button type="button" data-act="raise-custom">${session.hand.currentBet > 0 ? 'Raise' : 'Bet'}</button>
+          <span class="hint">${money(ev.minRaiseTo)}–${money(ev.maxTo)}</span>
+        </div>`
+      : '';
   panel.innerHTML = `
     <p class="turn-line">Your turn — ${ev.toCall > 0 ? `${money(ev.toCall)} to call` : 'no bet to you'} · pot ${money(ev.pot)} · ${money(ev.stack)} behind</p>
-    <div class="action-buttons">${buttons.join('')}</div>`;
+    <div class="action-buttons">${buttons.join('')}</div>${custom}`;
 }
 
 /** Play the rest of the hand out instantly — used after the hero folds. */
@@ -427,7 +479,19 @@ function showGame(inGame) {
   root.querySelector('#play-game').hidden = !inGame;
 }
 
+function syncMoodControl() {
+  const wrap = root.querySelector('#mood-wrap');
+  if (!session) {
+    wrap.hidden = true;
+    return;
+  }
+  const applicable = hasMoods(settingById(session.config.setting));
+  wrap.hidden = !applicable;
+  if (applicable) root.querySelector('#mood-select').value = session.config.mood ?? 'early';
+}
+
 function nextHand() {
+  syncMoodControl();
   root.querySelector('#hand-log').innerHTML = '';
   root.querySelector('#hand-analysis').innerHTML = '';
   shownBoard = 0;
@@ -488,11 +552,16 @@ function onClick(event) {
       showGame(true);
       nextHand();
     } else if (action === 'next-hand') {
+      unblockAdvance();
       nextHand();
+    } else if (action === 'advance') {
+      unblockAdvance();
     } else if (action === 'skip-hand') {
+      unblockAdvance();
       fastForwardHand();
     } else if (action === 'end-session') {
       runToken++;
+      unblockAdvance();
       session = null;
       awaiting = null;
       showGame(false);
@@ -507,8 +576,21 @@ function onClick(event) {
     const ev = awaiting;
     awaiting = null;
     try {
-      if (kind === 'raise') heroAct(session, 'raise', Number(act.dataset.to));
-      else heroAct(session, kind);
+      if (kind === 'raise-custom') {
+        const input = root.querySelector('#custom-amount');
+        const raw = Number(input?.value);
+        if (!raw || Number.isNaN(raw)) {
+          awaiting = ev;
+          input?.focus();
+          return;
+        }
+        const to = Math.min(Math.max(raw, ev.minRaiseTo), ev.maxTo);
+        heroAct(session, 'raise', to);
+      } else if (kind === 'raise') {
+        heroAct(session, 'raise', Number(act.dataset.to));
+      } else {
+        heroAct(session, kind);
+      }
     } catch (err) {
       awaiting = ev;
       appendLog(`(${err.message})`, 'street-line');
@@ -540,8 +622,18 @@ export function initPlay(rootEl) {
         </div>
         <div class="side-column">
           <section class="panel log-panel">
-            <header class="panel-head"><h2>The table talk</h2>
-            <p class="hint">Tells and tilt show up in here. Some of it is even true.</p></header>
+            <header class="panel-head log-head"><div><h2>The table talk</h2>
+            <p class="hint">Tells and tilt show up in here. Some of it is even true.</p></div>
+            <label class="pace-label"><span>Pace</span>
+              <select id="pace-select">
+                <option value="relaxed">Relaxed</option>
+                <option value="quick">Quick</option>
+                <option value="step">Tap through</option>
+              </select>
+            </label>
+            <label class="pace-label" id="mood-wrap" hidden><span>The night</span>
+              <select id="mood-select">${MOODS.map((m) => `<option value="${m.id}">${escape(m.name)}</option>`).join('')}</select>
+            </label></header>
             <div id="hand-log" class="hand-log"></div>
           </section>
           <div id="hand-analysis"></div>
@@ -549,6 +641,32 @@ export function initPlay(rootEl) {
       </div>
     </div>`;
   renderSetup();
+  const paceSelect = root.querySelector('#pace-select');
+  paceSelect.value = pace;
+  paceSelect.addEventListener('change', () => {
+    pace = paceSelect.value;
+    try {
+      localStorage.setItem('runout.pace', pace);
+    } catch {
+      /* fine */
+    }
+    if (pace !== 'step') unblockAdvance(); // a paused loop resumes at the new speed
+  });
+  const moodSelect = root.querySelector('#mood-select');
+  moodSelect.addEventListener('change', () => {
+    const mood = moodById(moodSelect.value);
+    config.mood = mood.id;
+    saveConfig();
+    if (session) {
+      session.config.mood = mood.id;
+      appendLog(`— The night moves on: ${mood.name.toLowerCase()}. —`, 'tell');
+    }
+  });
+  root.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'custom-amount') {
+      root.querySelector('[data-act="raise-custom"]')?.click();
+    }
+  });
   root.addEventListener('click', onClick);
   root.addEventListener('change', onInput);
   root.addEventListener('input', (e) => {

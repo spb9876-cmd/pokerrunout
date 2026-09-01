@@ -252,3 +252,41 @@ test('hero choices are always legal', () => {
     }
   }
 });
+
+test('the late-night mood plays looser than the early evening', () => {
+  const cfg = {
+    setting: 'home_cash', stage: 'early', currency: '$', smallBlind: 1, bigBlind: 2, heroStack: 200,
+    villains: [{ type: 'abc', stack: 200 }, { type: 'tag', stack: 200 }, { type: 'recreational', stack: 200 }],
+  };
+  const entryRate = (mood) => {
+    const session = createSession({ ...structuredClone(cfg), mood }, 47);
+    let entered = 0, chances = 0;
+    for (let i = 0; i < 150; i++) {
+      playHand(session, foldToAnything);
+      for (const e of session.hand.log) {
+        if (e.kind !== 'action' || e.street !== 'preflop') continue;
+        chances++;
+        if (e.action !== 'fold') entered++;
+      }
+    }
+    return entered / chances;
+  };
+  const early = entryRate('early');
+  const late = entryRate('late');
+  assert.ok(late > early + 0.03, `late night should enter more pots (early ${early.toFixed(3)}, late ${late.toFixed(3)})`);
+});
+
+test('all-ins are an event, not the routine', () => {
+  const cfg = {
+    setting: 'home_cash', stage: 'early', currency: '$', smallBlind: 1, bigBlind: 2, heroStack: 200, mood: 'early',
+    villains: [{ type: 'recreational', stack: 200 }, { type: 'abc', stack: 200 }, { type: 'tag', stack: 200 }, { type: 'tricky', stack: 200 }],
+  };
+  const session = createSession(structuredClone(cfg), 53);
+  let withAllIn = 0;
+  const hands = 200;
+  for (let i = 0; i < hands; i++) {
+    playHand(session, foldToAnything);
+    if (session.hand.log.some((e) => e.kind === 'action' && e.allIn)) withAllIn++;
+  }
+  assert.ok(withAllIn / hands < 0.1, `a sane 100bb table should rarely see stacks fly: ${((withAllIn / hands) * 100).toFixed(1)}% of hands had an all-in`);
+});

@@ -84,6 +84,7 @@ function gradeDecision(session, hand, d, index) {
   const hero = hand.seats.find((s) => s.isHero);
   const spot = {
     setting: cfg.setting,
+    mood: cfg.mood,
     stage: cfg.stage,
     currency: cfg.currency,
     bigBlind: cfg.bigBlind,

@@ -1446,3 +1446,59 @@ footer {
 .session-bar .bar-next + button {
   margin-left: 0;
 }
+
+.log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pace-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: none;
+}
+
+.pace-label select {
+  background: var(--felt-900);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+button.advance {
+  border-color: var(--brass-dim);
+  color: var(--brass);
+  font-weight: 650;
+  padding: 10px 18px;
+}
+
+.custom-bet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.custom-bet input {
+  width: 120px;
+  background: var(--felt-900);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+}
+
+.custom-bet input:focus {
+  outline: 2px solid var(--brass-dim);
+  outline-offset: -1px;
+}

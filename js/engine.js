@@ -10,7 +10,7 @@ import { equityVsRanges, exactEquity } from './equity.js';
 import { topPercentCodes, parseRange, rangeToCombos } from './ranges.js';
 import { RANGE_CUTOFF, PREFLOP_ORDER } from './data/preflop.js';
 import { strengthOnBoard, readHand } from './handstrength.js';
-import { archetypeById, settingById, stageById, positionById, hasPositionOn } from './players.js';
+import { archetypeById, settingById, stageById, positionById, hasPositionOn, applyMood } from './players.js';
 
 export const STREETS = ['preflop', 'flop', 'turn', 'river'];
 export const streetOf = (board) => STREETS[[0, 0, 0, 1, 2, 3][board.length]] ?? 'preflop';
@@ -223,7 +223,7 @@ export function continuingRange(weights, board, villain, setting, opts = {}) {
 
 /** Build every opponent's range for the spot as it stands. */
 export function buildRanges(spot) {
-  const setting = settingById(spot.setting);
+  const setting = applyMood(settingById(spot.setting), spot.mood);
   const dead = [...spot.hero.cards, ...spot.board];
   return spot.villains
     .filter((v) => v.role !== 'folded')
@@ -247,7 +247,7 @@ export function buildRanges(spot) {
 /** Pot odds and the equity a call has to beat. */
 export function callMath(spot, equity) {
   const { pot, toCall } = spot;
-  const setting = settingById(spot.setting);
+  const setting = applyMood(settingById(spot.setting), spot.mood);
   const stage = stageById(spot.stage);
   const potOdds = toCall > 0 ? toCall / (pot + toCall) : 0;
   const riskPremium = setting.format === 'tournament' ? Math.max(setting.riskPremium, stage.riskPremium) : 0;
@@ -276,7 +276,7 @@ const potFractionLabel = (f) =>
  * The whole analysis. Returns the numbers, the recommendation and the reasons.
  */
 export function analyse(spot, options = {}) {
-  const setting = settingById(spot.setting);
+  const setting = applyMood(settingById(spot.setting), spot.mood);
   const stage = stageById(spot.stage);
   const street = streetOf(spot.board);
   const ranges = buildRanges(spot);
