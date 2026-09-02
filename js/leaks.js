@@ -18,6 +18,16 @@ const LEAK_INFO = {
     line: (n) =>
       `${n} check${n === 1 ? '' : 's'} with a hand strong enough to bet. Good hands pay the rent — make the worse hands pay to see cards.`,
   },
+  'missed-bluff': {
+    title: 'You give up when the bluff is right there',
+    line: (n) =>
+      `${n} spot${n === 1 ? '' : 's'} where the field folds often enough to make betting profitable, and you checked or folded instead. Aggression is not a mood — it is arithmetic, and the arithmetic was on your side.`,
+  },
+  'bad-bluff': {
+    title: 'You bluff people who do not fold',
+    line: (n) =>
+      `${n} bluff${n === 1 ? '' : 's'} fired at players who were never letting go. A bluff is a story the other player has to be willing to fold to — pick the target, not the moment.`,
+  },
   'loose-open': {
     title: 'You open junk',
     line: (n) =>

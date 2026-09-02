@@ -152,3 +152,18 @@ test('a check caps the preflop raiser but not the player checking to them', () =
   assert.match(raiserRange.summary.label, /capped/);
   assert.match(defenderRange.summary.label, /tells you nothing/);
 });
+
+test('every analysis carries structured bluff arithmetic', () => {
+  // Facing a bet: the semi-bluff raise numbers.
+  const facing = run();
+  assert.ok(facing.bluff, 'facing a bet exposes bluff data');
+  assert.equal(facing.bluff.mode, 'raise');
+  assert.ok(facing.bluff.foldEquity > 0 && facing.bluff.foldEquity < 1);
+  assert.ok(facing.bluff.breakEven > 0 && facing.bluff.breakEven < 1);
+
+  // Checked to: the stab numbers, and foldOdds prices any size.
+  const checkedTo = run({ toCall: 0, villains: [{ position: 'bb', type: 'nit', stack: 400, role: 'blind', action: 'checked' }] });
+  assert.equal(checkedTo.bluff.mode, 'bet');
+  assert.equal(typeof checkedTo.foldOdds, 'function');
+  assert.ok(checkedTo.foldOdds(1) > checkedTo.foldOdds(0.3), 'bigger bets buy more folds');
+});

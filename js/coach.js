@@ -15,6 +15,7 @@ import { percentileOnBoard } from './handstrength.js';
 import { mulberry32 } from './rng.js';
 
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
+const pct0 = (x) => `${(x * 100).toFixed(0)}%`;
 
 /**
  * Grade one finished hand.
@@ -138,13 +139,26 @@ function gradeDecision(session, hand, d, index) {
   const same = rec === d.action || (aggressive(rec) && aggressive(d.action));
   const money = (n) => `${cfg.currency}${Math.round(Math.abs(n) * 100) / 100}`;
 
+  // The engine's bluff arithmetic for this spot: how often a bet or raise of
+  // its size gets everyone to fold, against how often it has to.
+  const bluff = report.bluff;
+  const semiText = read.drawText && d.street !== 'river' ? ` The ${read.drawText} makes it a semi-bluff — you still have outs when called.` : '';
+
   let grade;
   let verdict;
   if (same) {
     grade = 'good';
-    verdict = `${cap(d.action)} was right — the engine lands on ${report.decision.headline.toLowerCase()}.${
-      d.action === 'fold' ? drawNote + (drawNote ? '.' : '') : ''
-    }`;
+    if (aggressive(d.action) && bluff && equity < 0.45) {
+      // The hero pulled the trigger on a bluff the engine also likes. Say WHY
+      // the spot was good, so the lesson transfers to the next one.
+      verdict = `${cap(d.action)} here was a well-picked bluff: at ${pct(equity)} you were not winning at showdown, the ${
+        bluff.mode === 'raise' ? 'raise' : 'bet'
+      } only needs folds ${pct0(bluff.breakEven)} of the time, and this field folds about ${pct0(bluff.foldEquity)}.${semiText}`;
+    } else {
+      verdict = `${cap(d.action)} was right — the engine lands on ${report.decision.headline.toLowerCase()}.${
+        d.action === 'fold' ? drawNote + (drawNote ? '.' : '') : ''
+      }`;
+    }
   } else if (facing && margin < 0.05) {
     grade = 'ok';
     verdict = `Close either way: you had ${pct(equity)} needing ${pct(required)}${
@@ -161,24 +175,71 @@ function gradeDecision(session, hand, d, index) {
     }`;
   } else if (facing && d.action === 'fold' && (rec === 'call' || aggressive(rec))) {
     grade = 'mistake';
-    leakKey = 'overfold';
-    cost = (equity - required) * (d.pot + d.toCall);
-    verdict = `That fold gave up a profitable spot: ${pct(equity)} equity against ${pct(required)} needed.`;
+    if (aggressive(rec) && equity < required && bluff) {
+      // Calling was genuinely bad — the play was the semi-bluff raise.
+      leakKey = 'missed-bluff';
+      cost = Math.max(0, bluff.foldEquity * (d.pot + d.toCall) - (1 - bluff.foldEquity) * bluff.size);
+      verdict = `Folding missed a semi-bluff: calling was short of the price, but raising to ${money(bluff.size)} needs folds ${pct0(
+        bluff.breakEven
+      )} of the time, this field folds about ${pct0(bluff.foldEquity)}, and you still had ${pct(equity)} when called.${semiText}`;
+    } else {
+      leakKey = 'overfold';
+      cost = (equity - required) * (d.pot + d.toCall);
+      verdict = `That fold gave up a profitable spot: ${pct(equity)} equity against ${pct(required)} needed.`;
+    }
   } else if (!facing && rec === 'bet' && d.action === 'check') {
-    grade = equity > 0.7 ? 'mistake' : 'ok';
-    if (grade === 'mistake') leakKey = 'missed-value';
-    verdict = equity > 0.7
-      ? `Checking left money behind — at ${pct(equity)} this hand wants to grow the pot.`
-      : `A check is playable, but the engine likes a bet here (${pct(equity)}).`;
+    if (bluff && equity < 0.45) {
+      // The engine's bet was a bluff, not a value bet — the hero gave up on a
+      // pot nobody wanted. Flag it only when the fold equity clearly covers
+      // the price; a marginal stab passed up is not a leak.
+      const clear = bluff.foldEquity > bluff.breakEven * 1.25;
+      grade = clear ? 'mistake' : 'ok';
+      if (clear) {
+        leakKey = 'missed-bluff';
+        cost = Math.max(0, bluff.foldEquity * d.pot - (1 - bluff.foldEquity) * bluff.size);
+      }
+      verdict = clear
+        ? `Checking gave up a profitable bluff: at ${pct(equity)} this hand was not winning at showdown, and a ${money(
+            bluff.size
+          )} bet only needs folds ${pct0(bluff.breakEven)} of the time — this field folds about ${pct0(bluff.foldEquity)}.${semiText}`
+        : `A stab was there — this field folds about ${pct0(bluff.foldEquity)} against ${pct0(bluff.breakEven)} needed — but it is thin, and checking is fine.`;
+    } else {
+      grade = equity > 0.7 ? 'mistake' : 'ok';
+      if (grade === 'mistake') leakKey = 'missed-value';
+      verdict = equity > 0.7
+        ? `Checking left money behind — at ${pct(equity)} this hand wants to grow the pot.`
+        : `A check is playable, but the engine likes a bet here (${pct(equity)}).`;
+    }
   } else if (!facing && aggressive(d.action) && rec === 'check') {
-    grade = 'ok';
-    verdict = `The engine would check (${pct(equity)} equity), but a bet is not a disaster — just know why you are betting.`;
+    const attemptedBluff = bluff && equity < 0.4; // too little to be betting for value
+    const size = d.amount > 0 ? d.amount : bluff?.size ?? 0;
+    const fe = attemptedBluff && report.foldOdds ? report.foldOdds(size / Math.max(d.pot, 1)) : bluff?.foldEquity ?? 0;
+    const breakEven = size > 0 ? size / (d.pot + size) : bluff?.breakEven ?? 0;
+    if (attemptedBluff && fe < breakEven) {
+      grade = 'mistake';
+      leakKey = 'bad-bluff';
+      cost = Math.max(0, (1 - fe) * size - fe * d.pot);
+      const sticky = d.villains.find((v) => archetypeById(v.type).calldown >= 0.7);
+      verdict = `That bluff had nobody to fold out: it needs to work ${pct0(breakEven)} of the time and this field only folds about ${pct0(fe)}.${
+        sticky ? ` ${positionById(sticky.position).name} is a ${archetypeById(sticky.type).name.toLowerCase()} — they call too much to be bluffed.` : ''
+      } Save the story for someone who can fold.`;
+    } else if (attemptedBluff) {
+      grade = 'ok';
+      verdict = `A thin bluff: this field folds about ${pct0(fe)} and the bet needs ${pct0(breakEven)}. Close enough to defend, but the engine checks and keeps it cheap.`;
+    } else {
+      grade = 'ok';
+      verdict = `The engine would check (${pct(equity)} equity), but a bet is not a disaster — just know why you are betting.`;
+    }
   } else if (aggressive(d.action) && rec === 'call') {
     grade = 'ok';
     verdict = `A call was enough; raising builds a pot you only sometimes want. Not wrong, just louder.`;
   } else if (d.action === 'call' && aggressive(rec)) {
     grade = 'ok';
-    verdict = `Calling works, but this spot wanted pressure: ${report.decision.headline.toLowerCase()}.`;
+    verdict = facing && equity < required && bluff
+      ? `Calling was the middle road: it is short of the price (${pct(equity)} against ${pct(required)} needed), but raising gets folds about ${pct0(
+          bluff.foldEquity
+        )} of the time against ${pct0(bluff.breakEven)} needed. Pressure was the play.`
+      : `Calling works, but this spot wanted pressure: ${report.decision.headline.toLowerCase()}.`;
   } else {
     grade = 'ok';
     verdict = `The engine preferred ${rec} — worth a second look.`;

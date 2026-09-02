@@ -133,6 +133,59 @@ test('unopened pots are graded as open/fold decisions', () => {
   assert.equal(mk('7h 2d', 'raise', 'utg').grade, 'mistake', 'opening junk up front is a mistake');
 });
 
+test('bluff spots are recognised: missed, bad, and well-picked', () => {
+  const { parseCards } = awaitedCards;
+  const session = createSession(structuredClone(CONFIG), 4);
+  // River, checked to the hero with total air. The board and villain type
+  // decide whether the stab prints or burns.
+  const mk = (villainType, action, amount = 0) => {
+    const board = parseCards('Ah Kd Qc 9s 2d');
+    const hand = {
+      seats: [{ id: 0, isHero: true, cards: parseCards('6h 5c'), position: 'btn' }],
+      board,
+      log: [],
+      number: 1,
+      results: { heroNet: 0, reveal: [], winnersText: '', pots: [] },
+      decisions: [
+        {
+          street: 'river',
+          board,
+          pot: 20,
+          toCall: 0,
+          heroStack: 200,
+          heroPosition: 'btn',
+          action,
+          amount,
+          villains: [{ position: 'bb', type: villainType, stack: 200, role: 'blind', streetAction: 'checked', cards: parseCards('7d 6s') }],
+        },
+      ],
+    };
+    return gradeHand(session, hand).decisions[0];
+  };
+
+  // Checking air against a nit who folds to most river bets gives up a
+  // profitable bluff, and the verdict carries the arithmetic.
+  const missed = mk('nit', 'check');
+  assert.equal(missed.grade, 'mistake', missed.verdict);
+  assert.equal(missed.leakKey, 'missed-bluff', missed.verdict);
+  assert.match(missed.verdict, /folds about \d+%/, missed.verdict);
+  assert.ok(missed.cost > 0, 'a missed bluff has a price');
+
+  // Bluffing the same air into a station is lighting money on fire.
+  const bad = mk('station', 'bet', 13);
+  assert.equal(bad.grade, 'mistake', bad.verdict);
+  assert.equal(bad.leakKey, 'bad-bluff', bad.verdict);
+  assert.match(bad.verdict, /only folds about \d+%/, bad.verdict);
+  assert.match(bad.verdict, /call too much/, 'names the sticky player');
+
+  // Taking the stab against the nit is a well-picked bluff, and the praise
+  // teaches why the spot was good.
+  const good = mk('nit', 'bet', 10);
+  assert.equal(good.grade, 'good', good.verdict);
+  assert.match(good.verdict, /well-picked bluff/, good.verdict);
+  assert.match(good.verdict, /needs folds \d+%/, good.verdict);
+});
+
 test('draws are counted in the equity and named in the feedback', () => {
   const { parseCards } = awaitedCards;
   const session = createSession(structuredClone(CONFIG), 3);

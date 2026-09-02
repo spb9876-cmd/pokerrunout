@@ -317,6 +317,7 @@ export function analyse(spot, options = {}) {
   const spr = effectiveStack / Math.max(spot.pot, bb);
 
   let decision;
+  let bluff = null;
 
   if (spot.toCall > 0) {
     // ---- Facing a bet ----
@@ -325,6 +326,7 @@ export function analyse(spot, options = {}) {
     const raiseRatio = raiseSize / (spot.pot + spot.toCall);
     const fe = foldOdds(raiseRatio);
     const raiseBreakEven = bluffMath(spot.pot + spot.toCall, raiseSize).breakEvenFoldFrequency;
+    bluff = { mode: 'raise', size: raiseSize, foldEquity: fe, breakEven: raiseBreakEven, profitable: fe > raiseBreakEven * 1.15 };
 
     if (equity > 0.62 && ranges.some((r) => archetypeById(r.villain.type).calldown > 0.6)) {
       decision = { action: 'raise', size: raiseSize, headline: `Raise to ${amount(raiseSize)}` };
@@ -368,6 +370,7 @@ export function analyse(spot, options = {}) {
     const bluffSize = clamp(spot.pot * bluffRatio, bb, effectiveStack);
     const fe = foldOdds(bluffSize / spot.pot);
     const bluffBreakEven = bluffMath(spot.pot, bluffSize).breakEvenFoldFrequency;
+    bluff = { mode: 'bet', size: bluffSize, foldEquity: fe, breakEven: bluffBreakEven, profitable: fe > bluffBreakEven * 1.1 };
 
     if (equity > 0.6) {
       decision = { action: 'bet', size: valueSize, headline: `Bet ${amount(valueSize)} for value` };
@@ -419,6 +422,8 @@ export function analyse(spot, options = {}) {
     equity: equityResult,
     math,
     decision,
+    bluff,
+    foldOdds,
     reasons,
     exploits,
     context,
