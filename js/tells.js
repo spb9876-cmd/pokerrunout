@@ -138,6 +138,9 @@ export function decodeTell(tell, { typeName, hadStrong }) {
   const read = tell.honest
     ? `an honest read — they really were ${truth}`
     : `a false signal — they were actually ${truth}`;
-  const who = /unknown|\?|≈/i.test(typeName) ? 'player' : typeName.toLowerCase();
-  return `“${tell.text}” classically signals ${meant}. From this ${who}, it was ${read}.`;
+  let who;
+  if (typeName.includes('—')) who = typeName; // "Dave — calling station" style: keep the name as written
+  else if (/unknown|\?|≈/i.test(typeName)) who = 'this player';
+  else who = `this ${typeName.toLowerCase()}`;
+  return `“${tell.text}” classically signals ${meant}. From ${who}, it was ${read}.`;
 }

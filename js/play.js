@@ -6,6 +6,8 @@ import { rankOf, suitOf, RANKS, SUIT_SYMBOLS } from './cards.js';
 import { createSession, startHand, step, heroAct, potTotal } from './game.js';
 import { gradeHand } from './coach.js';
 import { ARCHETYPES, SETTINGS, STAGES, MOODS, archetypeById, settingById, positionById, moodById, hasMoods } from './players.js';
+import { VENUES, newCareer, unlocked, canAfford, sitDownConfig, settle, canRebuy, loadCareer, saveCareer, resetCareer } from './career.js';
+import { loadLeaks, saveLeaks, resetLeaks, recordCoach, diagnose } from './leaks.js';
 
 const CONFIG_KEY = 'runout.play.v1';
 const escape = (s) =>
@@ -20,6 +22,30 @@ let awaiting = null; // the hero-turn event we are waiting on
 let shownBoard = 0; // how many board cards have already animated in
 let pace = 'relaxed'; // relaxed | quick | step
 let advanceResolver = null; // pending "next action" click in step mode
+let career = null; // active career (null = free play only)
+let careerVenue = null; // the venue the current session is seated at
+let leaks = null; // the persistent leak profile
+let friends = []; // saved real-life player profiles
+
+const FRIENDS_KEY = 'runout.friends.v1';
+
+function loadFriends() {
+  try {
+    const raw = localStorage.getItem(FRIENDS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* fresh roster */
+  }
+  return [];
+}
+
+function saveFriends() {
+  try {
+    localStorage.setItem(FRIENDS_KEY, JSON.stringify(friends));
+  } catch {
+    /* fine */
+  }
+}
 
 try {
   pace = localStorage.getItem('runout.pace') || 'relaxed';
@@ -90,9 +116,18 @@ function renderSetup() {
     .map(
       (v, i) => `<div class="grid seat-row" data-index="${i}">
         <label class="field"><span>Opponent ${i + 1}</span>
-          <select data-play="villain.${i}.type">${ARCHETYPES.map(
-            (a) => `<option value="${a.id}"${a.id === v.type ? ' selected' : ''}>${escape(a.name)}</option>`
-          ).join('')}</select>
+          <select data-play="villain.${i}.who">
+            <optgroup label="Player types">${ARCHETYPES.map(
+              (a) => `<option value="${a.id}"${!v.friendId && a.id === v.type ? ' selected' : ''}>${escape(a.name)}</option>`
+            ).join('')}</optgroup>
+            ${
+              friends.length
+                ? `<optgroup label="Your regulars">${friends
+                    .map((f) => `<option value="friend:${f.id}"${v.friendId === f.id ? ' selected' : ''}>${escape(f.name)} (${escape(archetypeById(f.type).name)})</option>`)
+                    .join('')}</optgroup>`
+                : ''
+            }
+          </select>
         </label>
         <label class="field"><span>Their buy-in</span>
           <input type="number" inputmode="decimal" data-play="villain.${i}.stack" value="${v.stack}" min="1" />
@@ -103,7 +138,45 @@ function renderSetup() {
     )
     .join('');
 
+  const careerCard = career
+    ? `<div class="career-card">
+        <div><strong>Career</strong> · bankroll <b class="money-big">${config.currency}${career.bankroll}</b>
+        · ${career.handsPlayed} hands · peak ${config.currency}${career.peak}${career.stakes ? ` · staked ${career.stakes}×` : ''}</div>
+        <button type="button" class="primary" data-do="open-career">Continue career</button>
+      </div>`
+    : `<div class="career-card">
+        <div><strong>Career mode</strong> — start with ${config.currency}100 at the kitchen table and win your way to the big game. The bankroll is the score.</div>
+        <button type="button" class="primary" data-do="start-career">Start a career</button>
+      </div>`;
+
+  const d = diagnose(leaks, (n) => `${config.currency}${Math.round(n)}`);
+  const leakPanel = `<h3 class="subhead">Your game so far</h3>
+    <p class="hint">${escape(d.headline)}</p>
+    ${d.items.map((item) => `<div class="note leak-line"><strong>${escape(item.title)}.</strong> ${escape(item.line)}</div>`).join('')}
+    ${leaks.graded > 0 ? '<button type="button" class="ghost" data-do="reset-leaks" style="margin-top:8px">Reset the record</button>' : ''}`;
+
+  const regulars = `<h3 class="subhead">Your regulars</h3>
+    <p class="hint">The people you actually play with. Write the read once, then seat them at any table — their bot twin plays the way you described.</p>
+    ${friends
+      .map(
+        (f) => `<div class="friend-row" data-fid="${f.id}">
+          <strong>${escape(f.name)}</strong> <span class="badge">${escape(archetypeById(f.type).name)}</span>
+          ${f.note ? `<em class="hint">${escape(f.note)}</em>` : ''}
+          <button type="button" class="danger" data-do="remove-friend" data-fid="${f.id}">Remove</button>
+        </div>`
+      )
+      .join('')}
+    <div class="grid friend-add">
+      <label class="field"><span>Name</span><input type="text" id="friend-name" maxlength="24" placeholder="Dave" /></label>
+      <label class="field"><span>Plays like</span><select id="friend-type">${ARCHETYPES.filter((a) => a.id !== 'unknown')
+        .map((a) => `<option value="${a.id}">${escape(a.name)}</option>`)
+        .join('')}</select></label>
+      <label class="field"><span>Your read (optional)</span><input type="text" id="friend-note" maxlength="80" placeholder="limps monsters, chases every flush" /></label>
+      <div class="field"><span>&nbsp;</span><button type="button" data-do="add-friend">+ Save regular</button></div>
+    </div>`;
+
   root.querySelector('#play-setup').innerHTML = `
+    ${careerCard}
     <header class="panel-head">
       <h2>Set the table</h2>
       <p class="hint">Pick where you are playing and who is sitting with you. Then it deals hand after hand —
@@ -157,7 +230,89 @@ function renderSetup() {
     <div class="actions" style="margin-top:16px">
       <button type="button" class="primary" data-do="deal-in">Deal me in</button>
     </div>
-    <p class="hint" style="margin-top:10px">${escape(setting.tagline)}.</p>`;
+    <p class="hint" style="margin-top:10px">${escape(setting.tagline)}.</p>
+    ${regulars}
+    ${leakPanel}`;
+}
+
+/* ------------------------------------------------------------ career screen */
+
+function renderCareer(message = '') {
+  const cur = config.currency;
+  const venues = VENUES.map((venue) => {
+    const open = unlocked(career, venue);
+    const affordable = canAfford(career, venue);
+    const names = venue.config.villains.map((v) => v.name).join(', ');
+    return `<div class="street venue${open ? '' : ' muted'}">
+      <div class="venue-head">
+        <div><h3>${escape(venue.name)}</h3>
+        <p class="hint">${escape(venue.tagline)} · blinds ${cur}${venue.config.smallBlind}/${cur}${venue.config.bigBlind} · buy-in ${cur}${venue.buyin}</p></div>
+        ${
+          open
+            ? affordable
+              ? `<button type="button" class="primary" data-do="sit-down" data-venue="${venue.id}">Sit down · ${cur}${venue.buyin}</button>`
+              : `<span class="badge">need ${cur}${venue.buyin} to sit</span>`
+            : `<span class="badge">unlocks at ${cur}${venue.unlock}</span>`
+        }
+      </div>
+      <p class="lineup">${open ? `${escape(names)}. ${escape(venue.lineupNote)}` : 'Win your way in to see who plays here.'}</p>
+    </div>`;
+  }).join('');
+
+  root.querySelector('#career-screen').innerHTML = `
+    <div class="panel">
+      <div class="career-top">
+        <div>
+          <h2>Your career</h2>
+          <p class="hint">Bankroll is the score. Bust and your buddy stakes you back to the kitchen table — he keeps count.</p>
+        </div>
+        <div class="career-stats">
+          <div><span>Bankroll</span><b class="money-big">${cur}${career.bankroll}</b></div>
+          <div><span>Peak</span><b>${cur}${career.peak}</b></div>
+          <div><span>Hands</span><b>${career.handsPlayed}</b></div>
+          <div><span>Staked</span><b>${career.stakes}×</b></div>
+        </div>
+      </div>
+      ${message ? `<p class="career-message">${escape(message)}</p>` : ''}
+      ${venues}
+      <div class="actions" style="margin-top:16px">
+        <button type="button" class="ghost" data-do="close-career">Back to free play</button>
+        <button type="button" class="danger" data-do="reset-career">Start the career over</button>
+      </div>
+    </div>`;
+}
+
+function showView(view) {
+  root.querySelector('#play-setup').hidden = view !== 'setup';
+  root.querySelector('#career-screen').hidden = view !== 'career';
+  root.querySelector('#play-game').hidden = view !== 'game';
+}
+
+function leaveTable(reason = '') {
+  runToken++;
+  unblockAdvance();
+  awaiting = null;
+  let message = reason;
+  if (career && careerVenue && session) {
+    const result = settle(career, careerVenue, session);
+    saveCareer(career);
+    const cur = config.currency;
+    message =
+      (reason ? reason + ' ' : '') +
+      (result.net >= 0
+        ? `You left ${careerVenue.name} up ${cur}${Math.round(result.net)}.`
+        : `You left ${careerVenue.name} down ${cur}${Math.round(-result.net)}.`) +
+      (result.staked ? ' Fully felted — your buddy stakes you back to the kitchen table.' : '');
+  }
+  session = null;
+  careerVenue = null;
+  if (career) {
+    showView('career');
+    renderCareer(message);
+  } else {
+    showView('setup');
+    renderSetup();
+  }
 }
 
 /* ------------------------------------------------------------ the felt */
@@ -205,8 +360,8 @@ function renderSeats() {
         <div class="plaque">
           <div class="plaque-row">
             <span class="pos-pip">${escape(positionById(seat.position).name)}</span>
-            <span class="seat-name">${
-              seat.isHero ? 'You' : escape(session.reads ? session.reads[seat.id].label : archetypeById(seat.type).name)
+            <span class="seat-name"${seat.name && session.reads ? ` title="${escape(session.reads[seat.id].label)}"` : ''}>${
+              seat.isHero ? 'You' : escape(seat.name ?? (session.reads ? session.reads[seat.id].label : archetypeById(seat.type).name))
             }</span>
             ${steaming ? '<span class="steam" title="Steaming after a big loss — expect wider, angrier play">🔥</span>' : ''}
           </div>
@@ -272,13 +427,15 @@ function renderSessionBar() {
   const invested = session.invested[0];
   const rebuys = session.rebuys[0];
   const netClass = session.net > 0.001 ? 'up' : session.net < -0.001 ? 'down' : '';
+  const liveBankroll = career && careerVenue ? career.bankroll - session.invested[0] + session.stacks[0] : null;
   root.querySelector('#session-bar').innerHTML = `
-    <span><strong>Hand #${session.handNumber}</strong>${hero ? ` · ${escape(positionById(hero.position).label.toLowerCase())}` : ''}</span>
+    <span><strong>${careerVenue ? escape(careerVenue.name) : `Hand #${session.handNumber}`}</strong>${hero ? ` · ${escape(positionById(hero.position).label.toLowerCase())}` : ''}</span>
+    ${liveBankroll !== null ? `<span>Bankroll: <strong class="${liveBankroll >= career.bankroll ? 'up' : 'down'}">${money(Math.round(liveBankroll))}</strong> incl. stack</span>` : ''}
     <span>Stack: <strong>${money(session.stacks[0])}</strong> · in for ${money(invested)}${rebuys ? ` (${rebuys + 1} buy-ins)` : ''}</span>
     <span>Session: <strong class="${netClass}">${session.net >= 0 ? '+' : '−'}${money(Math.abs(session.net))}</strong> over ${session.handsPlayed} hand${session.handsPlayed === 1 ? '' : 's'}</span>
     <span title="decisions the coach agreed with / close calls / clear mistakes"><strong>${g.good}</strong> good · <strong>${g.ok}</strong> close · <strong>${g.mistake}</strong> mistake${g.mistake === 1 ? '' : 's'}</span>
     ${hand?.finished ? '<button type="button" class="primary bar-next" data-do="next-hand">Next hand</button>' : ''}
-    <button type="button" class="ghost" data-do="end-session">Change setup</button>`;
+    <button type="button" class="ghost" data-do="end-session">${careerVenue ? 'Leave table' : 'Change setup'}</button>`;
 }
 
 function appendLog(text, cls = '') {
@@ -420,13 +577,24 @@ function fastForwardHand() {
 function finishHand(results) {
   appendLog(results.winnersText, 'result-line');
   const coach = gradeHand(session, session.hand);
+  recordCoach(leaks, coach);
+  saveLeaks(leaks);
+
+  // If this hand fed the leak you bleed from most, say so while it stings.
+  let leakNote = '';
+  const d = diagnose(leaks, (n) => `${config.currency}${Math.round(n)}`);
+  const top = d.items[0];
+  if (top && top.count >= 5 && coach.decisions.some((x) => x.leakKey === top.key)) {
+    leakNote = `${top.title} — again. That is ${top.count} times now; it is your biggest leak.`;
+  }
+
   renderSessionBar();
-  renderAnalysis(coach, results);
+  renderAnalysis(coach, results, leakNote);
 }
 
 /* ---------------------------------------------------------------- analysis */
 
-function renderAnalysis(coach, results) {
+function renderAnalysis(coach, results, leakNote = '') {
   const gradeIcon = { good: '✔', ok: '≈', mistake: '✘' };
 
   const decisions = coach.decisions.length
@@ -453,7 +621,7 @@ function renderAnalysis(coach, results) {
   const reveal = coach.reveal
     .map(
       (r) => `<div class="runout-street">
-      <strong>${r.isHero ? 'You' : escape(positionById(r.position).name)}</strong>
+      <strong>${r.isHero ? 'You' : escape(r.name ?? positionById(r.position).name)}</strong>
       <span class="mini-cards">${r.cards.map((c) => `<span class="mini${isRed(c) ? ' red' : ''}${r.folded ? ' dim' : ''}">${RANKS[rankOf(c)]}${SUIT_SYMBOLS[suitOf(c)]}</span>`).join('')}</span>
       <span class="pct" style="font-weight:400;color:var(--ink-dim)">${r.folded ? 'folded' : escape(r.handName ?? '')}${r.tilt >= 0.25 ? ' · 🔥' : ''}</span>
     </div>`
@@ -466,6 +634,7 @@ function renderAnalysis(coach, results) {
       <header class="panel-head"><h2>How you did</h2>
         <p class="hint">${escape(coach.summary.process)}</p></header>
       <p class="outcome ${netClass}">${escape(coach.summary.outcome)} ${escape(results.winnersText)}</p>
+      ${leakNote ? `<p class="leak-flag">📉 ${escape(leakNote)}</p>` : ''}
       <h3 class="subhead">Your decisions</h3>
       ${decisions}
       <h3 class="subhead">The tells, decoded</h3>
@@ -485,11 +654,6 @@ const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
 /* ----------------------------------------------------------------- wiring */
 
-function showGame(inGame) {
-  root.querySelector('#play-setup').hidden = inGame;
-  root.querySelector('#play-game').hidden = !inGame;
-}
-
 function syncMoodControl() {
   const wrap = root.querySelector('#mood-wrap');
   if (!session) {
@@ -502,6 +666,10 @@ function syncMoodControl() {
 }
 
 function nextHand() {
+  if (career && careerVenue && session.stacks[0] < session.config.bigBlind && !canRebuy(career, careerVenue, session)) {
+    leaveTable('Felted — no cash left for another bullet here.');
+    return;
+  }
   syncMoodControl();
   root.querySelector('#hand-log').innerHTML = '';
   root.querySelector('#hand-analysis').innerHTML = '';
@@ -523,7 +691,22 @@ function onInput(event) {
   const path = el.dataset.play.split('.');
   const numeric = ['smallBlind', 'bigBlind', 'heroStack', 'stack'];
   const value = el.type === 'checkbox' ? el.checked : numeric.includes(path.at(-1)) ? Number(el.value) : el.value;
-  if (path[0] === 'villain') config.villains[Number(path[1])][path[2]] = value;
+  if (path[0] === 'villain' && path[2] === 'who') {
+    // Either an archetype id, or one of your saved regulars.
+    const villain = config.villains[Number(path[1])];
+    if (String(value).startsWith('friend:')) {
+      const friend = friends.find((f) => f.id === value.slice(7));
+      if (friend) {
+        villain.type = friend.type;
+        villain.name = friend.name;
+        villain.friendId = friend.id;
+      }
+    } else {
+      villain.type = value;
+      delete villain.name;
+      delete villain.friendId;
+    }
+  } else if (path[0] === 'villain') config.villains[Number(path[1])][path[2]] = value;
   else config[path[0]] = value;
   saveConfig();
   if (el.tagName === 'SELECT') renderSetup(); // taglines and stage field follow the selects
@@ -533,6 +716,72 @@ function onClick(event) {
   const doBtn = event.target.closest('[data-do]');
   if (doBtn) {
     const action = doBtn.dataset.do;
+    if (action === 'start-career') {
+      career = newCareer();
+      saveCareer(career);
+      showView('career');
+      renderCareer('Your buddy fronts you $100 and points at the kitchen table. Do not embarrass him.');
+      return;
+    }
+    if (action === 'open-career') {
+      showView('career');
+      renderCareer();
+      return;
+    }
+    if (action === 'close-career') {
+      showView('setup');
+      renderSetup();
+      return;
+    }
+    if (action === 'reset-career') {
+      if (!confirm('Start the career over from the kitchen table? Your bankroll and history reset.')) return;
+      resetCareer();
+      career = newCareer();
+      saveCareer(career);
+      renderCareer('Fresh start. $100, kitchen table, no excuses.');
+      return;
+    }
+    if (action === 'sit-down') {
+      const venue = VENUES.find((v) => v.id === doBtn.dataset.venue);
+      if (!venue || !unlocked(career, venue) || !canAfford(career, venue)) return;
+      careerVenue = venue;
+      session = createSession(sitDownConfig(venue));
+      showView('game');
+      nextHand();
+      return;
+    }
+    if (action === 'add-friend') {
+      const name = root.querySelector('#friend-name')?.value.trim();
+      const type = root.querySelector('#friend-type')?.value;
+      const note = root.querySelector('#friend-note')?.value.trim();
+      if (!name) {
+        root.querySelector('#friend-name')?.focus();
+        return;
+      }
+      friends.push({ id: Math.random().toString(36).slice(2, 10), name, type, note });
+      saveFriends();
+      renderSetup();
+      return;
+    }
+    if (action === 'remove-friend') {
+      friends = friends.filter((f) => f.id !== doBtn.dataset.fid);
+      // Seats that pointed at the removed regular fall back to their type.
+      for (const v of config.villains) {
+        if (v.friendId === doBtn.dataset.fid) {
+          delete v.friendId;
+          delete v.name;
+        }
+      }
+      saveFriends();
+      saveConfig();
+      renderSetup();
+      return;
+    }
+    if (action === 'reset-leaks') {
+      leaks = resetLeaks();
+      renderSetup();
+      return;
+    }
     if (action === 'randomize') {
       const total = Number(root.querySelector('#random-count')?.value ?? 6);
       const pool = ARCHETYPES.filter((a) => a.id !== 'unknown');
@@ -555,12 +804,13 @@ function onClick(event) {
       renderSetup();
     } else if (action === 'deal-in') {
       try {
+        careerVenue = null;
         session = createSession(structuredClone(config));
       } catch (err) {
         alert(err.message);
         return;
       }
-      showGame(true);
+      showView('game');
       nextHand();
     } else if (action === 'next-hand') {
       unblockAdvance();
@@ -571,12 +821,7 @@ function onClick(event) {
       unblockAdvance();
       fastForwardHand();
     } else if (action === 'end-session') {
-      runToken++;
-      unblockAdvance();
-      session = null;
-      awaiting = null;
-      showGame(false);
-      renderSetup();
+      leaveTable();
     }
     return;
   }
@@ -617,8 +862,12 @@ function onClick(event) {
 export function initPlay(rootEl) {
   root = rootEl;
   config = loadConfig();
+  career = loadCareer();
+  leaks = loadLeaks();
+  friends = loadFriends();
   root.innerHTML = `
     <section class="panel" id="play-setup"></section>
+    <div id="career-screen" hidden></div>
     <div id="play-game" hidden>
       <div class="panel session-bar" id="session-bar"></div>
       <div class="game-layout">

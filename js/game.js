@@ -126,6 +126,7 @@ export function startHand(session) {
   const players = buyins.map((buyin, i) => ({
     isHero: i === 0,
     type: i === 0 ? 'hero' : session.secretTypes ? session.secretTypes[i] : cfg.villains[i - 1].type,
+    name: i === 0 ? null : cfg.villains[i - 1].name ?? null,
     stackSize: session.stacks[i],
     buyin,
   }));
@@ -139,6 +140,7 @@ export function startHand(session) {
       id: i,
       isHero: p.isHero,
       type: p.type,
+      name: p.name,
       position,
       startStack: p.stackSize,
       stack: p.stackSize,
@@ -188,8 +190,7 @@ export function startHand(session) {
   log(hand, { kind: 'deal', text: `Hand #${hand.number}. Blinds ${cfg.smallBlind}/${cfg.bigBlind} posted.` });
 
   // Rebuys and top-ups happen between hands, before the blinds go out.
-  const seatName = (seat) =>
-    seat.isHero ? 'You' : session.secretTypes ? positionById(seat.position).name : `${positionById(seat.position).name} (${archetypeById(seat.type).name})`;
+  const seatName = (seat) => displayName(session, seat);
   for (const seat of seats) {
     const busted = seat.stack < cfg.bigBlind;
     const wantsTopUp = !seat.isHero && TOPS_UP.has(seat.type) && seat.stack < seat.buyin * 0.5;
@@ -405,11 +406,18 @@ function villainTurn(session, hand, seat) {
   return event;
 }
 
+/** How a seat is spoken of in the table talk. */
+export function displayName(session, seat) {
+  if (seat.isHero) return 'You';
+  const pos = positionById(seat.position).name;
+  if (seat.name) return `${seat.name} (${pos})`;
+  if (session.secretTypes) return pos;
+  return `${pos} (${archetypeById(seat.type).name})`;
+}
+
 function actionText(session, hand, seat, decision, tell) {
   const cfg = session.config;
-  const name = session.secretTypes
-    ? positionById(seat.position).name
-    : `${positionById(seat.position).name} (${archetypeById(seat.type).name})`;
+  const name = displayName(session, seat);
   const money = (n) => `${cfg.currency}${Math.round(n * 100) / 100}`;
   let base;
   switch (decision.action) {

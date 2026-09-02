@@ -51,6 +51,26 @@ about $1.28 lit on fire per time"). Then it opens everything: every hand at the 
 tells were honest. The session keeps score: net result and decision quality, separately, because they are
 not the same thing.
 
+### Career mode
+
+The bankroll is the score. Start with $100 at The Kitchen Table — Uncle Ray has not folded since 2019 —
+and win your way up a six-venue ladder: Garage Night, Casino $1/$2, the faceless Online Grind, Casino
+$2/$5, and finally The Big Game at $5/$10 where it is two in the morning and everyone is stuck. Every venue
+has a recurring, named lineup, its own blinds and buy-in, and an unlock price. Rebuys come out of your
+roll; go fully broke and your buddy stakes you back to the kitchen table, and he keeps count.
+
+### Your regulars
+
+Save profiles of the people you actually play with — a name, a style, and your one-line read — then seat
+them at any free-play table. Their bot twin plays the way you described, under their own name, so you can
+scrimmage Tuesday's lineup before Tuesday.
+
+### The leak profile
+
+Every graded decision, across every session, feeds a persistent diagnosis: *you call when you are beat,
+you fold winners, you leave value on the table, you open junk* — each with counts and an estimated cost.
+The worst leak gets called out in the post-hand analysis the moment you feed it again.
+
 ### Read a spot
 
 You build a spot — where you are playing, your seat and stack, your two cards, the board, the pot, and one

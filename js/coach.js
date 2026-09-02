@@ -30,7 +30,10 @@ export function gradeHand(session, hand) {
   }
 
   const fresh = !!session.config.freshTable;
-  const shownType = (seat) => (fresh ? session.reads?.[seat.id]?.label ?? 'Unknown' : archetypeById(seat.type).name);
+  const shownType = (seat) => {
+    const base = fresh ? session.reads?.[seat.id]?.label ?? 'Unknown' : archetypeById(seat.type).name;
+    return seat.name ? `${seat.name} — ${base}` : base;
+  };
   const tells = decodeTells(hand, shownType);
   const steam = hand.seats
     .filter((s) => !s.isHero && (s.tilt ?? 0) >= 0.25)
@@ -120,6 +123,8 @@ function gradeDecision(session, hand, d, index) {
     /* card conflicts cannot happen here, but stay safe */
   }
 
+  let leakKey = null;
+  let cost = 0;
   const rec = report.decision.action;
   const equity = report.equity.equity;
   const required = report.math.requiredEquity;
@@ -139,13 +144,17 @@ function gradeDecision(session, hand, d, index) {
     verdict = `Close either way: you had ${pct(equity)} needing ${pct(required)}. ${cap(d.action)} is defensible.`;
   } else if (facing && rec === 'fold' && !aggressive(d.action) && d.action === 'call') {
     grade = 'mistake';
-    const loss = (required - equity) * (d.pot + d.toCall);
-    verdict = `Calling was the leak: ${pct(equity)} equity needing ${pct(required)} — about ${money(loss)} lit on fire per time.`;
+    leakKey = 'loose-call';
+    cost = (required - equity) * (d.pot + d.toCall);
+    verdict = `Calling was the leak: ${pct(equity)} equity needing ${pct(required)} — about ${money(cost)} lit on fire per time.`;
   } else if (facing && d.action === 'fold' && (rec === 'call' || aggressive(rec))) {
     grade = 'mistake';
+    leakKey = 'overfold';
+    cost = (equity - required) * (d.pot + d.toCall);
     verdict = `That fold gave up a profitable spot: ${pct(equity)} equity against ${pct(required)} needed.`;
   } else if (!facing && rec === 'bet' && d.action === 'check') {
     grade = equity > 0.7 ? 'mistake' : 'ok';
+    if (grade === 'mistake') leakKey = 'missed-value';
     verdict = equity > 0.7
       ? `Checking left money behind — at ${pct(equity)} this hand wants to grow the pot.`
       : `A check is playable, but the engine likes a bet here (${pct(equity)}).`;
@@ -174,6 +183,8 @@ function gradeDecision(session, hand, d, index) {
     ...base,
     grade,
     verdict,
+    leakKey,
+    cost: Math.max(cost, 0),
     detail: `Perceived equity ${pct(equity)} vs ${pct(required)} required.${truthLine}`,
     hand: readHand(hero.cards, d.board).made,
     equity,
@@ -189,6 +200,7 @@ const cap = (s) => s[0].toUpperCase() + s.slice(1);
  * so the question is simply whether this hand plays from this seat.
  */
 function gradeUnopened(session, hand, d, base) {
+  let leakKey = null;
   const hero = hand.seats.find((s) => s.isHero);
   const p = RANGE_CUTOFF[handCode(hero.cards[0], hero.cards[1])] ?? 1;
   const setting = settingById(session.config.setting);
@@ -208,6 +220,7 @@ function gradeUnopened(session, hand, d, base) {
   } else if (d.action === 'fold') {
     if (p <= width * 0.7) {
       grade = 'mistake';
+      leakKey = 'overfold';
       verdict = `That fold gave up a hand this seat plays: it is in the ${rank} of hands, and ${yard}.`;
     } else if (p <= width * 1.3) {
       grade = 'ok';
@@ -225,6 +238,7 @@ function gradeUnopened(session, hand, d, base) {
       verdict = `A loose open: the hand is in the ${rank} against a usual ${(width * 100).toFixed(0)}% from the ${seat}. Playable in the right seat with the right table.`;
     } else {
       grade = 'mistake';
+      leakKey = 'loose-open';
       verdict = `Opening this is lighting money: the hand is only in the ${rank}, and ${yard}.`;
     }
   } else {
@@ -244,7 +258,7 @@ function gradeUnopened(session, hand, d, base) {
     }
   }
 
-  return { ...base, grade, verdict, detail: `Yardstick: ${yard}.`, hand: null };
+  return { ...base, grade, verdict, leakKey, cost: 0, detail: `Yardstick: ${yard}.`, hand: null };
 }
 
 /** What the body language was actually worth, tell by tell. */
