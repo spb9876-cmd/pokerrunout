@@ -44,8 +44,10 @@ export function gradeHand(session, hand) {
   const results = hand.results;
   const money = (n) => `${cfg.currency}${Math.round(Math.abs(n) * 100) / 100}`;
 
-  const outcome =
-    results.heroNet > 0.001
+  const chopped = results.kind === 'showdown' && results.pots.some((p) => p.winners.length > 1 && p.winners.includes(0));
+  const outcome = chopped
+    ? `Chopped pot — your money came back${results.heroNet > 0.001 ? ` plus ${money(results.heroNet)} of dead money` : results.heroNet < -0.001 ? `, less ${money(results.heroNet)}` : ''}.`
+    : results.heroNet > 0.001
       ? `You won ${money(results.heroNet)} on the hand.`
       : results.heroNet < -0.001
         ? `You lost ${money(results.heroNet)} on the hand.`

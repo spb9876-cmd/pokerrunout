@@ -702,7 +702,7 @@ function finishUncontested(session, hand, winner) {
   const results = {
     kind: 'uncontested',
     pots: [{ amount: total, winners: [winner.id] }],
-    winnersText: winner.isHero ? 'You take it down uncontested.' : `${positionById(winner.position).name} takes it uncontested.`,
+    winnersText: winner.isHero ? 'You take it down uncontested.' : `${displayName(session, winner)} takes it uncontested.`,
     reveal: revealAll(hand),
     heroNet: heroNet(hand, won),
     potTotal: total,
@@ -746,8 +746,10 @@ function finishShowdown(session, hand) {
   const heroWon = won.get(hero.id) ?? 0;
   const nameOf = (id) => {
     const seat = hand.seats.find((x) => x.id === id);
-    return seat.isHero ? 'you' : positionById(seat.position).name;
+    return seat.isHero ? 'you' : displayName(session, seat);
   };
+  const cur = session.config.currency ?? '$';
+  const fmt = (n) => `${cur}${Math.round(n * 100) / 100}`;
 
   // The first pot built is the main pot; later ones are side pots.
   const main = pots[0];
@@ -755,10 +757,13 @@ function finishShowdown(session, hand) {
   const mainHand = describe(Math.max(...main.winners.map((id) => scores.get(id))));
   let winnersText;
   if (main.winners.length > 1) {
-    winnersText = `${mainNames.join(' and ')} split it with ${mainHand}.`;
-    if (main.winners.includes(hero.id)) winnersText = `Split pot — ${mainNames.join(' and ')} chop it with ${mainHand}.`;
+    // A chop reads like a loss unless the money coming back is spelled out.
+    const share = main.amount / main.winners.length;
+    winnersText = main.winners.includes(hero.id)
+      ? `Split pot — ${mainNames.join(' and ')} chop the ${fmt(main.amount)} pot with ${mainHand}; your ${fmt(share)} share comes back.`
+      : `${mainNames.join(' and ')} split the ${fmt(main.amount)} pot with ${mainHand}.`;
   } else if (main.winners[0] === hero.id) {
-    winnersText = `You win it with ${mainHand}.`;
+    winnersText = `You win the ${fmt(main.amount)} pot with ${mainHand}.`;
   } else {
     winnersText = `${mainNames[0]} wins with ${mainHand}.`;
   }
