@@ -132,3 +132,51 @@ test('unopened pots are graded as open/fold decisions', () => {
   assert.equal(mk('Ah Kd', 'raise').grade, 'good', 'opening a premium is right');
   assert.equal(mk('7h 2d', 'raise', 'utg').grade, 'mistake', 'opening junk up front is a mistake');
 });
+
+test('draws are counted in the equity and named in the feedback', () => {
+  const { parseCards } = awaitedCards;
+  const session = createSession(structuredClone(CONFIG), 3);
+  const mk = (heroCards, board, pot, toCall, action) => {
+    const hand = {
+      seats: [{ id: 0, isHero: true, cards: parseCards(heroCards), position: 'btn' }],
+      board: parseCards(board),
+      log: [],
+      number: 1,
+      results: { heroNet: 0, reveal: [], winnersText: '', pots: [] },
+      decisions: [
+        {
+          street: board.trim().split(/\s+/).length === 3 ? 'flop' : 'turn',
+          board: parseCards(board),
+          pot,
+          toCall,
+          heroStack: 200,
+          heroPosition: 'btn',
+          action,
+          amount: 0,
+          villains: [{ position: 'bb', type: 'tag', stack: 200, role: 'blind', streetAction: 'bet', cards: parseCards('Kc Qc') }],
+        },
+      ],
+    };
+    return gradeHand(session, hand).decisions[0];
+  };
+
+  // A flop nut flush draw getting 3:1 is a clear call: the equity must reflect
+  // the draw, and the label must name it.
+  const call = mk('Ah 7h', 'Kh 9h 2c', 30, 10, 'call');
+  assert.match(call.hand, /flush draw/, `label names the draw: "${call.hand}"`);
+  assert.ok(call.equity > 0.35, `draw equity is real: ${call.equity}`);
+  assert.notEqual(call.grade, 'mistake', call.verdict);
+
+  // Folding that same draw at that price is the mistake, and the verdict
+  // engages with the draw rather than ignoring it.
+  const fold = mk('Ah 7h', 'Kh 9h 2c', 30, 10, 'fold');
+  assert.equal(fold.grade, 'mistake', fold.verdict);
+
+  // A gutshot facing a pot-sized river-less price: if calling grades as a
+  // mistake, the verdict says the draw was already priced in.
+  const gutshot = mk('Jh Td', '8s 7d 2c', 20, 20, 'call');
+  if (gutshot.grade === 'mistake') {
+    assert.match(gutshot.verdict, /draw|gutshot/i, `mistake verdict engages the draw: "${gutshot.verdict}"`);
+  }
+  assert.match(gutshot.hand, /gutshot/, gutshot.hand);
+});

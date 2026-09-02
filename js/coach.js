@@ -125,6 +125,8 @@ function gradeDecision(session, hand, d, index) {
 
   let leakKey = null;
   let cost = 0;
+  const read = readHand(hero.cards, d.board);
+  const drawNote = read.drawText && d.street !== 'river' ? ` — draws included: the ${read.drawText} is already in that number` : '';
   const rec = report.decision.action;
   const equity = report.equity.equity;
   const required = report.math.requiredEquity;
@@ -138,15 +140,23 @@ function gradeDecision(session, hand, d, index) {
   let verdict;
   if (same) {
     grade = 'good';
-    verdict = `${cap(d.action)} was right — the engine lands on ${report.decision.headline.toLowerCase()}.`;
+    verdict = `${cap(d.action)} was right — the engine lands on ${report.decision.headline.toLowerCase()}.${
+      d.action === 'fold' ? drawNote + (drawNote ? '.' : '') : ''
+    }`;
   } else if (facing && margin < 0.05) {
     grade = 'ok';
-    verdict = `Close either way: you had ${pct(equity)} needing ${pct(required)}. ${cap(d.action)} is defensible.`;
+    verdict = `Close either way: you had ${pct(equity)} needing ${pct(required)}${
+      read.drawText && d.street !== 'river' ? ` — the ${read.drawText} is what keeps it close` : ''
+    }. ${cap(d.action)} is defensible.`;
   } else if (facing && rec === 'fold' && !aggressive(d.action) && d.action === 'call') {
     grade = 'mistake';
     leakKey = 'loose-call';
     cost = (required - equity) * (d.pot + d.toCall);
-    verdict = `Calling was the leak: ${pct(equity)} equity needing ${pct(required)} — about ${money(cost)} lit on fire per time.`;
+    verdict = `Calling was the leak: ${pct(equity)} equity needing ${pct(required)} — about ${money(cost)} lit on fire per time.${
+      read.drawText && d.street !== 'river'
+        ? ` The ${read.drawText} is already counted in that equity — it just does not get there often enough for this price.`
+        : ''
+    }`;
   } else if (facing && d.action === 'fold' && (rec === 'call' || aggressive(rec))) {
     grade = 'mistake';
     leakKey = 'overfold';
@@ -186,7 +196,7 @@ function gradeDecision(session, hand, d, index) {
     leakKey,
     cost: Math.max(cost, 0),
     detail: `Perceived equity ${pct(equity)} vs ${pct(required)} required.${truthLine}`,
-    hand: readHand(hero.cards, d.board).made,
+    hand: read.made + (read.drawText ? ` with a ${read.drawText}` : ''),
     equity,
     required,
     truth,
