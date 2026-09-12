@@ -1,52 +1,52 @@
 ---
 name: enhance
-description: Deepen and polish an existing feature of Runout without changing what it is. The counterpart to /10xthis — same shape, higher quality. Use when the user invokes /enhance on a feature, screen, or area of the app (or with no target, to find and lift the weakest one).
+description: Digest a messy prompt into a fixed six-slot spec, execute from the spec in the same turn with no clarifying questions, and report with the assumptions listed for one-shot correction. Use when the user types /enhance in front of a prompt, or asks to tighten a prompt.
 ---
 
 # Enhance
 
-Take the feature the user pointed at and make the version that already exists
-noticeably better: smarter where it thinks, clearer where it speaks, smoother
-where it is touched. This is not a rebuild and not a re-imagining — the feature
-keeps its shape and its place in the app. If the request is really a bigger
-thing wearing a small name, say so and offer /10xthis instead.
+Take the prompt after `/enhance` — as messy as it comes — and run it through
+one turn with no questions back to the user.
 
-If no target is given, play the app and read the code until the weakest
-user-facing area declares itself, name it, and enhance that.
+## 1. Digest the prompt into a six-slot spec
 
-## How to do it
+Exactly these slots, always in this order:
 
-1. **Use it before you touch it.** Run the real thing the way a player would —
-   deal hands through it, read the transcripts and coach output it produces,
-   drive it in the browser (Chromium is preinstalled; `js/play.js` renders
-   everything). Write down what is rough, wrong-feeling, or flat *as
-   experienced*, not as imagined from the code.
-2. **Sort the list into the three layers.** Every enhancement here lands in one
-   of: the **math/model** (engine, ranges, dealer behavior — does it decide
-   right?), the **words** (coach verdicts, table talk, labels — does it teach
-   and read like a person?), or the **feel** (pacing, layout, taps and
-   scrolling — does it get out of the way?). Fix in that order; better words on
-   a wrong number is lipstick.
-3. **Measure, don't vibe.** This repo's standard holds: a behavioral claim gets
-   a simulation over hundreds of hands, a payout or equity claim gets an
-   independent recomputation, a "feels too frequent/rare" claim gets a measured
-   rate before and after. Tune to numbers you printed, not to impressions.
-4. **Pin it with tests.** Each fix gets a regression test in `test/` that fails
-   on the old behavior. `npm test` green before every push; statistical tests
-   use fixed seeds.
-5. **Ship and verify.** Commit with a message that says what got better and
-   why, push to the working branch, and confirm the Pages deploy succeeded via
-   the Actions API (the sandbox cannot fetch the live site directly).
+- **Goal** — what the user is actually after, one line.
+- **Deliverable** — the concrete artifact this turn produces.
+- **Must** — only facts the user actually stated, kept verbatim. Nothing
+  inferred, nothing invented, nothing "obviously implied" ever enters this
+  list.
+- **Assumptions** — every gap that would normally trigger a clarifying
+  question becomes a line here with a chosen default instead. Check the
+  codebase before assuming: if the repo already answers the question (a thing
+  already exists, a convention is already set), record that finding as the
+  assumption rather than guessing.
+- **Out of scope** — what this turn deliberately does not touch.
+- **Done when** — a check that can actually be run, not a feeling. For code
+  changes in this repo the floor is `npm test` green; name anything stricter
+  the prompt implies.
 
-## Rules
+The spec must not be longer than the prompt it digests. For a short prompt
+that means a short spec — empty slots are written as "—", not padded.
 
-- The feature's scope does not grow. New capabilities are a different request;
-  park them in one line at the end if they came up.
-- Keep every existing test passing — an enhancement that breaks the dealer's
-  chip conservation or the coach's grading invariants is a regression with
-  good intentions.
-- Player-facing text follows the house voice: plain language, second person,
-  the arithmetic said out loud, no jargon left undefined.
-- Never make the game about real money. Enhancements to stakes, careers, or
-  payouts stay play-money.
-- Three sharp improvements shipped beat ten noted. Depth over coverage.
+## 2. Execute from the spec
+
+Work only from the spec, reading only the files the spec names (plus what
+they directly require). Do the work, then verify the **Done when** check by
+running it, not by asserting it.
+
+## 3. Report in three parts
+
+1. **Delivered** — what exists now that did not before.
+2. **Assumptions** — the list from the spec, so any wrong default can be
+   corrected with a single follow-up message.
+3. **Check** — the Done-when result, quoted from the actual run.
+
+## Limits
+
+- This skill fires only when the user types `/enhance` before a prompt or
+  asks to tighten one. It cannot apply itself to plain messages; automatic
+  rewriting of every message would need a hook in settings and would cost an
+  extra model call per message.
+- No clarifying questions, ever — that is what the Assumptions slot is for.
