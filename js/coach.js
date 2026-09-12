@@ -338,7 +338,8 @@ function gradeUnopened(session, hand, d, base) {
 function decodeTells(hand, shownType = (seat) => archetypeById(seat.type).name) {
   const out = [];
   const rng = mulberry32(hand.number * 31 + 7);
-  for (const entry of hand.log) {
+  for (let i = 0; i < hand.log.length; i++) {
+    const entry = hand.log[i];
     if (!entry.tell) continue;
     const seat = hand.seats.find((s) => s.id === entry.seat);
     const arch = archetypeById(seat.type);
@@ -350,11 +351,14 @@ function decodeTells(hand, shownType = (seat) => archetypeById(seat.type).name) 
         : percentileOnBoard(seat.cards, board, rng) >= 0.7;
     const displayName = shownType(seat);
     out.push({
+      key: i, // the hand.log index — stable handle for reads made mid-hand
       seat: entry.seat,
+      name: seat.name ?? null,
       position: positionById(seat.position).name,
       type: displayName,
       reliability: TELL_RELIABILITY[seat.type] ?? 0.6,
       line: entry.text,
+      wasStrong: strong,
       decoded: decodeTell(entry.tell, { typeName: displayName, hadStrong: strong }),
     });
   }

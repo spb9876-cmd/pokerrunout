@@ -127,6 +127,7 @@ export function startHand(session) {
     isHero: i === 0,
     type: i === 0 ? 'hero' : session.secretTypes ? session.secretTypes[i] : cfg.villains[i - 1].type,
     name: i === 0 ? null : cfg.villains[i - 1].name ?? null,
+    avatar: i === 0 ? null : cfg.villains[i - 1].avatar ?? null,
     stackSize: session.stacks[i],
     buyin,
   }));
@@ -141,6 +142,7 @@ export function startHand(session) {
       isHero: p.isHero,
       type: p.type,
       name: p.name,
+      avatar: p.avatar,
       position,
       startStack: p.stackSize,
       stack: p.stackSize,

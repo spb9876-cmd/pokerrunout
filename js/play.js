@@ -8,6 +8,7 @@ import { gradeHand } from './coach.js';
 import { ARCHETYPES, SETTINGS, STAGES, MOODS, archetypeById, settingById, positionById, moodById, hasMoods } from './players.js';
 import { VENUES, newCareer, unlocked, canAfford, sitDownConfig, settle, canRebuy, loadCareer, saveCareer, resetCareer } from './career.js';
 import { loadLeaks, saveLeaks, resetLeaks, recordCoach, diagnose } from './leaks.js';
+import { loadDossiers, saveDossiers, recordHand as dossierHand, recordTell as dossierTell, recordRead as dossierRead, readTitle } from './dossiers.js';
 
 const CONFIG_KEY = 'runout.play.v1';
 const escape = (s) =>
@@ -26,6 +27,9 @@ let career = null; // active career (null = free play only)
 let careerVenue = null; // the venue the current session is seated at
 let leaks = null; // the persistent leak profile
 let friends = []; // saved real-life player profiles
+let dossiers = null; // persistent per-character read record
+let tellGuesses = new Map(); // log index -> 'strong' | 'weak', this hand's calls
+let readTally = { made: 0, correct: 0 }; // this session's tell-reading score
 
 const FRIENDS_KEY = 'runout.friends.v1';
 
@@ -242,7 +246,20 @@ function renderCareer(message = '') {
   const venues = VENUES.map((venue) => {
     const open = unlocked(career, venue);
     const affordable = canAfford(career, venue);
-    const names = venue.config.villains.map((v) => v.name).join(', ');
+    const roster = venue.config.villains
+      .map((v) => {
+        const d = dossiers.chars[v.name];
+        const record = d?.reads
+          ? `${d.correct}/${d.reads} reads · ${readTitle(d)}`
+          : d?.hands
+            ? `${d.hands} hand${d.hands === 1 ? '' : 's'} · ${readTitle(d)}`
+            : 'not met yet';
+        return `<span class="char-chip" title="How well you read them: call their tells mid-hand to find out">
+          <span class="char-face">${escape(v.avatar ?? '👤')}</span>
+          <span class="char-id"><strong>${escape(v.name)}</strong><small>${escape(record)}</small></span>
+        </span>`;
+      })
+      .join('');
     return `<div class="street venue${open ? '' : ' muted'}">
       <div class="venue-head">
         <div><h3>${escape(venue.name)}</h3>
@@ -255,7 +272,7 @@ function renderCareer(message = '') {
             : `<span class="badge">unlocks at ${cur}${venue.unlock}</span>`
         }
       </div>
-      <p class="lineup">${open ? `${escape(names)}. ${escape(venue.lineupNote)}` : 'Win your way in to see who plays here.'}</p>
+      ${open ? `<div class="char-row">${roster}</div><p class="lineup">${escape(venue.lineupNote)}</p>` : '<p class="lineup">Win your way in to see who plays here.</p>'}
     </div>`;
   }).join('');
 
@@ -359,6 +376,7 @@ function renderSeats() {
         <div class="peek-cards">${cardsHtml}</div>
         <div class="plaque">
           <div class="plaque-row">
+            ${seat.avatar ? `<span class="seat-avatar">${escape(seat.avatar)}</span>` : ''}
             <span class="pos-pip">${escape(positionById(seat.position).name)}</span>
             <span class="seat-name"${seat.name && session.reads ? ` title="${escape(session.reads[seat.id].label)}"` : ''}>${
               seat.isHero ? 'You' : escape(seat.name ?? (session.reads ? session.reads[seat.id].label : archetypeById(seat.type).name))
@@ -434,8 +452,50 @@ function renderSessionBar() {
     <span>Stack: <strong>${money(session.stacks[0])}</strong> · in for ${money(invested)}${rebuys ? ` (${rebuys + 1} buy-ins)` : ''}</span>
     <span>Session: <strong class="${netClass}">${session.net >= 0 ? '+' : '−'}${money(Math.abs(session.net))}</strong> over ${session.handsPlayed} hand${session.handsPlayed === 1 ? '' : 's'}</span>
     <span title="decisions the coach agreed with / close calls / clear mistakes"><strong>${g.good}</strong> good · <strong>${g.ok}</strong> close · <strong>${g.mistake}</strong> mistake${g.mistake === 1 ? '' : 's'}</span>
+    ${readTally.made > 0 ? `<span title="tells you called before the reveal">👁 reads: <strong>${readTally.correct}/${readTally.made}</strong></span>` : ''}
     ${hand?.finished ? '<button type="button" class="primary bar-next" data-do="next-hand">Next hand</button>' : ''}
     <button type="button" class="ghost" data-do="end-session">${careerVenue ? 'Leave table' : 'Change setup'}</button>`;
+}
+
+/* ------------------------------------------------------------ chat bubbles */
+
+// A tell surfaces as a speech bubble at the seat that produced it, and it is
+// the game piece: call it "has it" or "bluffing" before the reveal, and the
+// analysis scores your read. One bubble per seat — a new line replaces the old.
+function showBubble(ev) {
+  const layer = root.querySelector('#bubble-layer');
+  if (!layer || !session?.hand) return;
+  const hand = session.hand;
+  const n = hand.seats.length;
+  const seat = hand.seats.find((s) => s.id === ev.seat);
+  if (!seat) return;
+  let { x, y } = chairSpot(seat.id, n, 31, 33);
+  // Top-half bubbles hang downward, so start them tight under the plaque to
+  // stay off the board; bottom-half ones grow upward away from it anyway.
+  if (y < 50) ({ x, y } = chairSpot(seat.id, n, 35, 38));
+  const key = hand.log.length - 1; // the entry this event just logged
+  layer.querySelector(`[data-seat="${seat.id}"]`)?.remove();
+  const el = document.createElement('div');
+  // Top-half seats speak downward toward the middle so the bubble never sits
+  // on their own plaque; bottom-half seats speak upward.
+  el.className = `chat-bubble${y < 50 ? ' below' : ''}`;
+  el.dataset.seat = seat.id;
+  el.dataset.key = key;
+  el.style.left = `${x}%`;
+  el.style.top = `${y}%`;
+  el.innerHTML = `
+    <span class="bubble-who">${seat.avatar ? `${escape(seat.avatar)} ` : ''}${escape(seat.name ?? positionById(seat.position).name)}</span>
+    <em class="bubble-text">${escape(ev.tell.text)}</em>
+    <div class="bubble-read">
+      <button type="button" data-guess="strong">Has it</button>
+      <button type="button" data-guess="weak">Bluffing</button>
+    </div>`;
+  layer.appendChild(el);
+}
+
+function clearBubbles() {
+  const layer = root.querySelector('#bubble-layer');
+  if (layer) layer.innerHTML = '';
 }
 
 function appendLog(text, cls = '') {
@@ -477,6 +537,7 @@ async function runHand() {
     const ev = step(session);
     if (ev.kind === 'action') {
       appendLog(ev.text, ev.tell ? 'tell' : '');
+      if (ev.tell) showBubble(ev);
       renderTable();
       await pause('action', !!ev.tell);
     } else if (ev.kind === 'street') {
@@ -576,9 +637,26 @@ function fastForwardHand() {
 
 function finishHand(results) {
   appendLog(results.winnersText, 'result-line');
+  clearBubbles();
   const coach = gradeHand(session, session.hand);
   recordCoach(leaks, coach);
   saveLeaks(leaks);
+
+  // Score the tells you called mid-hand, and file everything with a name on
+  // it into that character's dossier.
+  for (const t of coach.tells) {
+    const guess = tellGuesses.get(t.key);
+    if (guess) {
+      t.guess = guess;
+      t.correct = (guess === 'strong') === t.wasStrong;
+      readTally.made += 1;
+      if (t.correct) readTally.correct += 1;
+      if (t.name) dossierRead(dossiers, t.name, t.correct);
+    }
+    if (t.name) dossierTell(dossiers, t.name);
+  }
+  dossierHand(dossiers, session.hand.seats.filter((s) => !s.isHero && s.name).map((s) => s.name));
+  saveDossiers(dossiers);
 
   // If this hand fed the leak you bleed from most, say so while it stings.
   let leakNote = '';
@@ -610,8 +688,14 @@ function renderAnalysis(coach, results, leakNote = '') {
         .join('')
     : '<p class="hint">No decisions reached you this hand.</p>';
 
+  const readMark = (t) =>
+    t.guess === undefined
+      ? ''
+      : t.correct
+        ? `<span class="read-result up">✔ You called it — you said ${t.guess === 'strong' ? '"has it"' : '"bluffing"'}.</span> `
+        : `<span class="read-result down">✘ It got you — you said ${t.guess === 'strong' ? '"has it"' : '"bluffing"'}.</span> `;
   const tells = coach.tells.length
-    ? coach.tells.map((t) => `<div class="note tell-decode"><strong>${escape(t.position)} (${escape(t.type)})</strong>: ${escape(t.decoded)}</div>`).join('')
+    ? coach.tells.map((t) => `<div class="note tell-decode"><strong>${escape(t.position)} (${escape(t.type)})</strong>: ${readMark(t)}${escape(t.decoded)}</div>`).join('')
     : '<p class="hint">No tells this hand.</p>';
 
   const steam = coach.steam?.length
@@ -673,6 +757,8 @@ function nextHand() {
   syncMoodControl();
   root.querySelector('#hand-log').innerHTML = '';
   root.querySelector('#hand-analysis').innerHTML = '';
+  clearBubbles();
+  tellGuesses = new Map();
   shownBoard = 0;
   startHand(session);
   const hero = session.hand.seats.find((s) => s.isHero);
@@ -746,6 +832,7 @@ function onClick(event) {
       if (!venue || !unlocked(career, venue) || !canAfford(career, venue)) return;
       careerVenue = venue;
       session = createSession(sitDownConfig(venue));
+      readTally = { made: 0, correct: 0 };
       showView('game');
       nextHand();
       return;
@@ -810,6 +897,7 @@ function onClick(event) {
         alert(err.message);
         return;
       }
+      readTally = { made: 0, correct: 0 };
       showView('game');
       nextHand();
     } else if (action === 'next-hand') {
@@ -822,6 +910,21 @@ function onClick(event) {
       fastForwardHand();
     } else if (action === 'end-session') {
       leaveTable();
+    }
+    return;
+  }
+
+  // Calling a tell: lock the read in the bubble; the reveal settles it.
+  const guessBtn = event.target.closest('[data-guess]');
+  if (guessBtn) {
+    const bubble = guessBtn.closest('.chat-bubble');
+    const key = Number(bubble?.dataset.key);
+    if (bubble && Number.isInteger(key) && !tellGuesses.has(key) && session?.hand && !session.hand.finished) {
+      const guess = guessBtn.dataset.guess;
+      tellGuesses.set(key, guess);
+      bubble.querySelector('.bubble-read').outerHTML = `<span class="read-locked">Read locked: ${
+        guess === 'strong' ? 'has it' : 'bluffing'
+      }</span>`;
     }
     return;
   }
@@ -865,6 +968,7 @@ export function initPlay(rootEl) {
   career = loadCareer();
   leaks = loadLeaks();
   friends = loadFriends();
+  dossiers = loadDossiers();
   root.innerHTML = `
     <section class="panel" id="play-setup"></section>
     <div id="career-screen" hidden></div>
@@ -877,6 +981,7 @@ export function initPlay(rootEl) {
             <div class="board-center" id="board-area"></div>
             <div id="chips-layer"></div>
             <div id="seats"></div>
+            <div id="bubble-layer"></div>
           </div>
           <section class="panel" id="action-panel"></section>
         </div>

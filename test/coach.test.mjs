@@ -50,6 +50,9 @@ test('every played hand can be graded, and grades are tracked', () => {
     }
     for (const t of coach.tells) {
       assert.match(t.decoded, /honest read|false signal/);
+      // The read game needs a stable handle and the ground truth for scoring.
+      assert.ok(Number.isInteger(t.key) && session.hand.log[t.key]?.tell, 'tell key points at its log entry');
+      assert.equal(typeof t.wasStrong, 'boolean');
     }
   }
   const total = session.grades.good + session.grades.ok + session.grades.mistake;

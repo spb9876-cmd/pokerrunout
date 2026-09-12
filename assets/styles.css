@@ -1709,3 +1709,164 @@ button.advance {
   font-size: 13.5px;
   margin: 0 0 12px;
 }
+
+/* ---------- chat bubbles & the read game ---------- */
+
+#bubble-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.chat-bubble {
+  position: absolute;
+  transform: translate(-50%, var(--bubble-ty, -100%));
+  pointer-events: auto;
+  max-width: 190px;
+  min-width: 120px;
+  background: linear-gradient(170deg, #fdfefe, #eef4f0);
+  color: #10241d;
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  animation: bubble-pop 0.22s ease-out;
+}
+
+.chat-bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: #eef4f0;
+  border-bottom: none;
+}
+
+@keyframes bubble-pop {
+  from {
+    opacity: 0;
+  }
+}
+
+.chat-bubble.below {
+  --bubble-ty: 0%;
+}
+
+.chat-bubble.below::after {
+  bottom: auto;
+  top: -8px;
+  border: 8px solid transparent;
+  border-bottom-color: #eef4f0;
+  border-top: none;
+}
+
+.bubble-who {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3c5a4e;
+  margin-bottom: 2px;
+}
+
+.bubble-text {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.bubble-read {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.bubble-read button {
+  flex: 1;
+  border: 1px solid #b9cdc4;
+  border-radius: 7px;
+  background: #f6faf8;
+  color: #10241d;
+  font-size: 11.5px;
+  font-weight: 650;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.bubble-read button:hover {
+  background: #e3efe8;
+}
+
+.read-locked {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3c5a4e;
+}
+
+.read-result {
+  font-weight: 650;
+}
+
+.read-result.up {
+  color: var(--good);
+}
+
+.read-result.down {
+  color: var(--bad);
+}
+
+.seat-avatar {
+  font-size: 15px;
+  line-height: 1;
+  flex: none;
+}
+
+/* ---------- career characters ---------- */
+
+.char-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+.char-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--felt-700);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.char-face {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.char-id {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.char-id small {
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  .chat-bubble {
+    max-width: 150px;
+    min-width: 100px;
+    padding: 6px 8px;
+  }
+
+  .bubble-text {
+    font-size: 11.5px;
+  }
+}
